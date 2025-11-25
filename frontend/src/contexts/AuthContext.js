@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import storage from '../utils/storage'; // Use our custom storage wrapper
 import { authService } from '../services/authService';
 
 export const AuthContext = createContext();
@@ -15,8 +15,8 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuthState = async () => {
     try {
-      const storedToken = await AsyncStorage.getItem('authToken');
-      const storedUser = await AsyncStorage.getItem('user');
+      const storedToken = await storage.getItem('authToken');
+      const storedUser = await storage.getItem('user');
       
       if (storedToken && storedUser) {
         setToken(storedToken);
@@ -37,8 +37,8 @@ export const AuthProvider = ({ children }) => {
       setUser(user);
       setToken(token);
       
-      await AsyncStorage.setItem('authToken', token);
-      await AsyncStorage.setItem('user', JSON.stringify(user));
+      await storage.setItem('authToken', token);
+      await storage.setItem('user', JSON.stringify(user));
       
       return { success: true };
     } catch (error) {
@@ -46,7 +46,7 @@ export const AuthProvider = ({ children }) => {
       return { 
         success: false, 
         error: error.response?.data?.error || 'Login failed' 
-      };
+      }; 1
     }
   };
 
@@ -58,8 +58,8 @@ export const AuthProvider = ({ children }) => {
       setUser(user);
       setToken(token);
       
-      await AsyncStorage.setItem('authToken', token);
-      await AsyncStorage.setItem('user', JSON.stringify(user));
+      await storage.setItem('authToken', token);
+      await storage.setItem('user', JSON.stringify(user));
       
       return { success: true };
     } catch (error) {
@@ -79,8 +79,8 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setUser(null);
       setToken(null);
-      await AsyncStorage.removeItem('authToken');
-      await AsyncStorage.removeItem('user');
+      await storage.removeItem('authToken');
+      await storage.removeItem('user');
     }
   };
 
@@ -90,7 +90,7 @@ export const AuthProvider = ({ children }) => {
       const updatedUser = response.data;
       
       setUser(updatedUser);
-      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+      await storage.setItem('user', JSON.stringify(updatedUser));
       
       return { success: true };
     } catch (error) {

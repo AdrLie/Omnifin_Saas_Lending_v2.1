@@ -2,31 +2,37 @@ import React, { useState, useContext } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { TextInput, Button, Card, Title, Paragraph, ActivityIndicator } from 'react-native-paper';
 import { AuthContext } from '../contexts/AuthContext';
-
-export default function LoginScreen({ navigation }) {
+import { useNavigation } from '@react-navigation/native';
+export default function LoginScreen() {
+  const navigation = useNavigation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useContext(AuthContext);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
+  if (!email || !password) {
+    Alert.alert('Error', 'Please fill in all fields');
+    return;
+  }
 
-    setLoading(true);
-    try {
-      const result = await login(email, password);
-      if (!result.success) {
-        Alert.alert('Login Failed', result.error);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred');
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  try {
+    console.log("[LoginScreen] Calling login() from AuthContext");
+    const result = await login(email, password);
+    if (!result.success) {
+      Alert.alert('Login Failed', result.error);
+    } else {
+      navigation.replace('Home'); // or 'Home', depending on your routes
     }
-  };
+  } catch (error) {
+    console.log("[LoginScreen] Unexpected error:", error);
+    Alert.alert('Error', 'An unexpected error occurred');
+  } finally {
+    setLoading(false);
+    console.log("[LoginScreen] Loading set to false");
+  }
+};
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -56,18 +62,19 @@ export default function LoginScreen({ navigation }) {
             left={<TextInput.Icon name="lock" />}
           />
 
-          {loading ? (
-            <ActivityIndicator size="large" style={styles.loader} />
-          ) : (
-            <Button
-              mode="contained"
-              onPress={handleLogin}
-              style={styles.button}
-              icon="login"
-            >
-              Sign In
-            </Button>
-          )}
+          <Button
+            mode="contained"
+            onPress={() => {
+              console.log("[LoginScreen] Sign In button pressed");
+              handleLogin();
+            }}
+            style={styles.button}
+            icon="login"
+            disabled={loading}
+          >
+            {loading ? <ActivityIndicator size="small" style={{ marginRight: 10 }} /> : null}
+            Sign In
+          </Button>
 
           <Button
             mode="text"

@@ -1,0 +1,59 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 20
+skinparam shadowing false
+
+participant "User Interface" as UI
+participant "AI Controller" as AI
+participant "LLM Service" as LLM
+participant "Voice Service" as Voice
+participant "Knowledge Bank" as KB
+participant "Prompt Manager" as PM
+
+title AI Integration & Conversation Management Workflow
+
+UI -> AI: User Message/Voice Input
+activate AI
+
+AI -> AI: Determine Input Type
+
+alt Text Input
+    AI -> PM: Load Active Prompts
+    PM -> AI: Return Prompt Templates
+    AI -> AI: Format Prompt with Context
+    AI -> LLM: Send to ChatGPT API
+    LLM -> LLM: Process Message
+    LLM -> AI: Return Text Response
+else Voice Input
+    AI -> Voice: Send Audio to STT Service
+    Voice -> Voice: Convert Speech to Text
+    Voice -> AI: Return Transcribed Text
+    AI -> PM: Load Active Prompts
+    PM -> AI: Return Prompt Templates
+    AI -> AI: Format Prompt with Context
+    AI -> LLM: Send to ChatGPT API
+    LLM -> LLM: Process Message
+    LLM -> AI: Return Text Response
+    AI -> Voice: Send Response to TTS Service
+    Voice -> Voice: Convert Text to Speech
+    Voice -> AI: Return Audio Response
+end
+
+AI -> KB: Retrieve Relevant Knowledge
+KB -> AI: Return Knowledge Entries
+
+AI -> AI: Process Response with Knowledge
+AI -> UI: Send Response (Text/Audio)
+deactivate AI
+
+UI -> AI: Continue Conversation
+activate AI
+AI -> AI: Maintain Context History
+AI -> PM: Check for Prompt Updates
+PM -> AI: Return Latest Prompts
+AI -> AI: Continue with Updated Prompts
+
+deactivate AI
+
+@enduml

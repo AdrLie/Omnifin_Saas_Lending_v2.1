@@ -23,14 +23,14 @@ export default function HomeScreen({ navigation }) {
         description: 'Begin your loan application process',
         icon: 'file-document-edit',
         onPress: () => navigation.navigate('Chat'),
-        roles: ['applicant'],
+        roles: ['applicant', 'admin'],
       },
       {
         title: 'Voice Assistant',
         description: 'Use voice chat for hands-free assistance',
         icon: 'microphone',
         onPress: () => navigation.navigate('VoiceChat'),
-        roles: ['applicant'],
+        roles: ['applicant', 'admin'],
       },
       {
         title: 'My Applications',
@@ -54,7 +54,7 @@ export default function HomeScreen({ navigation }) {
           if (user.role === 'superadmin') {
             navigation.navigate('Dashboard');
           } else if (user.role === 'admin') {
-            navigation.navigate('AdminDashboard');
+            navigation.navigate('Dashboard');
           } else if (user.role === 'tpb') {
             navigation.navigate('TPBDashboard');
           }

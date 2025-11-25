@@ -16,7 +16,7 @@ app_name = 'authentication'
 urlpatterns = [
     # Authentication
     path('register/', UserRegistrationView.as_view(), name='register'),
-    path('login/', UserLoginView.as_view(), name='login'),
+    path('login/', UserLoginView.as_view(), name='login'),  # Explicit API login endpoint
     path('logout/', UserLogoutView.as_view(), name='logout'),
     path('password/change/', PasswordChangeView.as_view(), name='password_change'),
     path('password/reset/', password_reset_request, name='password_reset'),

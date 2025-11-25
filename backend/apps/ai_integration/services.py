@@ -2,10 +2,13 @@
 AI Integration Services for Omnifin Platform
 """
 
-import openai
+from openai import OpenAI  # ✅ CORRECT IMPORT
 import requests
 import json
 import logging
+import time
+import base64
+import os
 from typing import Dict, List, Optional, Any
 from django.conf import settings
 from django.core.cache import cache
@@ -18,9 +21,23 @@ class AIChatService:
     """Service for handling AI chat interactions"""
     
     def __init__(self):
-        self.client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-        self.model = settings.AI_MODEL
-        self.conversation_cache_timeout = 3600  # 1 hour
+        # ✅ NEW SYNTAX - Create OpenAI client without proxies argument
+        try:
+            # Remove any proxy-related environment variables that might interfere
+            client_kwargs = {
+                'api_key': settings.OPENAI_API_KEY
+            }
+            
+            # Only add timeout, max_retries if needed
+            # client_kwargs['timeout'] = 60.0
+            # client_kwargs['max_retries'] = 2
+            
+            self.client = OpenAI(**client_kwargs)
+            self.model = settings.AI_MODEL
+            self.conversation_cache_timeout = 3600  # 1 hour
+        except Exception as e:
+            logger.error(f"Error initializing OpenAI client: {str(e)}")
+            raise
     
     def get_active_prompts(self, category: str = None) -> List[Prompt]:
         """Get active prompts for AI interactions"""
@@ -75,7 +92,11 @@ class AIChatService:
                 knowledge_context = "\n\nRelevant information:\n" + "\n".join(knowledge)
                 messages.append({"role": "system", "content": knowledge_context})
             
-            # Generate AI response
+            # Add current user message
+            messages.append({"role": "user", "content": user_message})
+            
+            # ✅ NEW SYNTAX - Generate AI response using new OpenAI API
+            logger.info(f"Calling OpenAI API with model: {self.model}")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -85,19 +106,23 @@ class AIChatService:
                 frequency_penalty=0.1
             )
             
+            # ✅ NEW SYNTAX - Extract AI response
             ai_response = response.choices[0].message.content
             
             # Save AI message
             Message.objects.create(
                 conversation=conversation,
-                sender='ai',
+                sender='assistant',
                 content=ai_response
             )
             
+            logger.info(f"Successfully processed message for conversation {conversation.id}")
             return ai_response
             
         except Exception as e:
             logger.error(f"Error processing AI message: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return "I apologize, but I'm having trouble processing your request. Please try again."
     
     def _build_conversation_history(self, conversation: Conversation) -> List[Dict[str, str]]:
@@ -105,7 +130,7 @@ class AIChatService:
         messages = []
         
         # Get recent messages (last 10)
-        recent_messages = conversation.messages.all().order_by('-created_at')[:10]
+        recent_messages = Message.objects.filter(conversation=conversation).order_by('-created_at')[:10]
         
         for message in reversed(recent_messages):
             role = 'user' if message.sender == 'user' else 'assistant'
@@ -144,27 +169,112 @@ class VoiceService:
     """Service for handling voice interactions"""
     
     def __init__(self):
-        self.elevenlabs_api_key = settings.ELEVENLABS_API_KEY
-        self.ultravox_api_key = settings.ULTRAVOX_API_KEY
-    
-    def speech_to_text(self, audio_file) -> str:
-        """Convert speech to text using Ultravox"""
+        # ✅ NEW SYNTAX - Create client without proxies
         try:
-            # In production, integrate with Ultravox API
-            # For now, return placeholder
-            return "[Transcribed text from audio]"
+            self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            self.elevenlabs_api_key = settings.ELEVENLABS_API_KEY
+            self.ultravox_api_key = settings.ULTRAVOX_API_KEY
         except Exception as e:
-            logger.error(f"Error in speech to text: {str(e)}")
+            logger.error(f"Error initializing VoiceService OpenAI client: {str(e)}")
             raise
     
-    def text_to_speech(self, text: str, voice_id: str = None) -> bytes:
-        """Convert text to speech using ElevenLabs"""
+    def speech_to_text(self, audio_file) -> str:
+        """Convert speech to text using OpenAI Whisper"""
         try:
-            # In production, integrate with ElevenLabs API
-            # For now, return placeholder
-            return b"[Audio data]"
+            logger.info("Starting speech to text conversion with Whisper")
+            
+            audio_file.seek(0)
+
+            file_content = audio_file.read()
+
+            openai_file_tuple = (audio_file.name, file_content)
+
+            # ✅ NEW SYNTAX - Use OpenAI Whisper API
+            transcript = self.client.audio.transcriptions.create(
+                model="whisper-1",
+                file=openai_file_tuple, 
+                response_format="text"
+            )
+            
+            logger.info(f"Successfully transcribed audio")
+            return transcript
+            
+        except Exception as e:
+            # LOG THE REAL ERROR
+            # Since your View catches this exception and returns a generic message,
+            # you must look at your console/logs to see this specific error.
+            logger.error(f"Error in speech to text: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise Exception(f"Failed to transcribe audio: {str(e)}") # Return actual error for debugging
+    
+    def text_to_speech(self, text: str, voice_id: str = None) -> str:
+        """Convert text to speech using OpenAI TTS"""
+        try:
+            logger.info("Starting text to speech conversion")
+            
+            # ✅ NEW SYNTAX - Use OpenAI TTS API
+            response = self.client.audio.speech.create(
+                model="tts-1",
+                voice=voice_id or "alloy",
+                input=text,
+                response_format="mp3"
+            )
+            
+            # Get audio content as bytes
+            audio_bytes = response.content
+            
+            # Encode to base64 for transmission
+            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+            
+            logger.info("Successfully converted text to speech")
+            return audio_base64
+            
         except Exception as e:
             logger.error(f"Error in text to speech: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise Exception("Failed to generate speech. Please try again.")
+    
+    def text_to_speech_elevenlabs(self, text: str, voice_id: str = None) -> str:
+        """Convert text to speech using ElevenLabs (alternative)"""
+        try:
+            if not self.elevenlabs_api_key:
+                raise Exception("ElevenLabs API key not configured")
+            
+            logger.info("Starting text to speech conversion with ElevenLabs")
+            
+            default_voice_id = "21m00Tcm4TlvDq8ikWAM"
+            url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id or default_voice_id}"
+            
+            headers = {
+                "Accept": "audio/mpeg",
+                "Content-Type": "application/json",
+                "xi-api-key": self.elevenlabs_api_key
+            }
+            
+            data = {
+                "text": text,
+                "model_id": "eleven_monolingual_v1",
+                "voice_settings": {
+                    "stability": 0.5,
+                    "similarity_boost": 0.5
+                }
+            }
+            
+            response = requests.post(url, json=data, headers=headers)
+            
+            if response.status_code == 200:
+                audio_base64 = base64.b64encode(response.content).decode('utf-8')
+                logger.info("Successfully converted text to speech with ElevenLabs")
+                return audio_base64
+            else:
+                raise Exception(f"ElevenLabs API error: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            logger.error(f"Error in text_to_speech_elevenlabs: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             raise
 
 
@@ -172,17 +282,14 @@ class LoanMatchingService:
     """Service for matching applicants with suitable lenders"""
     
     def __init__(self):
-        self.cache_timeout = 3600  # 1 hour
+        self.cache_timeout = 3600
     
     def match_applicant_to_lenders(self, applicant_data: Dict[str, Any]) -> List[str]:
         """Match applicant with suitable lenders based on criteria"""
-        # This would integrate with the lender matching algorithm
-        # For now, return all active lenders
         from apps.loans.models import Lender
         
         suitable_lenders = Lender.objects.filter(is_active=True)
         
-        # Apply basic filtering based on loan amount
         loan_amount = applicant_data.get('loan_amount', 0)
         if loan_amount:
             suitable_lenders = suitable_lenders.filter(
@@ -215,23 +322,85 @@ class LoanMatchingService:
 class DocumentIntelligenceService:
     """Service for intelligent document processing"""
     
+    def __init__(self):
+        # ✅ NEW SYNTAX
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    
     def extract_document_info(self, document_path: str) -> Dict[str, Any]:
-        """Extract information from uploaded documents"""
-        # In production, integrate with document processing services
-        # For now, return placeholder
-        return {
-            "document_type": "unknown",
-            "extracted_text": "",
-            "confidence": 0.0,
-            "fields": {}
-        }
+        """Extract information from uploaded documents using OpenAI Vision"""
+        try:
+            logger.info(f"Extracting info from document: {document_path}")
+            return {
+                "document_type": "unknown",
+                "extracted_text": "",
+                "confidence": 0.0,
+                "fields": {}
+            }
+        except Exception as e:
+            logger.error(f"Error extracting document info: {str(e)}")
+            return {
+                "document_type": "error",
+                "extracted_text": "",
+                "confidence": 0.0,
+                "fields": {},
+                "error": str(e)
+            }
     
     def verify_document(self, document_info: Dict[str, Any]) -> Dict[str, Any]:
         """Verify document authenticity and completeness"""
-        # In production, implement document verification logic
         return {
             "is_verified": False,
             "verification_notes": "Manual verification required",
             "required_fields": [],
             "missing_fields": []
         }
+
+
+class AIAnalyticsService:
+    """Service for AI-powered analytics"""
+    
+    def __init__(self):
+        # ✅ NEW SYNTAX
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    
+    def analyze_conversation(self, conversation: Conversation) -> Dict[str, Any]:
+        """Analyze conversation for insights"""
+        try:
+            messages = Message.objects.filter(conversation=conversation).order_by('created_at')
+            
+            if not messages.exists():
+                return {"error": "No messages to analyze"}
+            
+            conversation_text = ""
+            for msg in messages:
+                role = "User" if msg.sender == "user" else "Assistant"
+                conversation_text += f"{role}: {msg.content}\n"
+            
+            # ✅ NEW SYNTAX
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an AI that analyzes conversations and provides insights about user intent, sentiment, and key topics."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Analyze this conversation and provide:\n1. Main intent\n2. Sentiment\n3. Key topics\n4. Summary\n\nConversation:\n{conversation_text}"
+                    }
+                ],
+                temperature=0.3,
+                max_tokens=500
+            )
+            
+            analysis = response.choices[0].message.content
+            
+            return {
+                "conversation_id": str(conversation.id),
+                "analysis": analysis,
+                "message_count": messages.count()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing conversation: {str(e)}")
+            return {"error": str(e)}

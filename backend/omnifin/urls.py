@@ -7,13 +7,13 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.authtoken import views as auth_views
+from apps.authentication.views import get_csrf_token
 
 urlpatterns = [
     # Django admin
     path('admin/', admin.site.urls),
     
     # API authentication
-    path('api/auth/', include('rest_framework.urls')),
     path('api/token/', auth_views.obtain_auth_token),
     
     # App URLs
@@ -26,6 +26,9 @@ urlpatterns = [
     
     # API documentation (in production, use tools like drf-yasg)
     path('api/', include('rest_framework.urls')),
+
+    # CSRF token endpoint
+    path('api/csrf/', get_csrf_token, name='csrf'),
 ]
 
 if settings.DEBUG:

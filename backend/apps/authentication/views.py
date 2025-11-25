@@ -1,3 +1,9 @@
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.http import JsonResponse
+# CSRF token endpoint for frontend
+@ensure_csrf_cookie
+def get_csrf_token(request):
+    return JsonResponse({'detail': 'CSRF cookie set'})
 """
 Authentication views for Omnifin Platform
 """
@@ -9,6 +15,7 @@ from rest_framework.authtoken.models import Token
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from apps.authentication.models import User, TPBProfile, ApplicantProfile
 from apps.authentication.serializers import (
@@ -19,6 +26,7 @@ from apps.authentication.serializers import (
 from apps.authentication.permissions import IsAdmin, IsSuperAdmin, IsTPB
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class UserRegistrationView(generics.CreateAPIView):
     """User registration view"""
     serializer_class = UserRegistrationSerializer
@@ -38,6 +46,7 @@ class UserRegistrationView(generics.CreateAPIView):
         }, status=status.HTTP_201_CREATED)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class UserLoginView(generics.GenericAPIView):
     """User login view"""
     serializer_class = UserLoginSerializer

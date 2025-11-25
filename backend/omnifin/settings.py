@@ -4,14 +4,13 @@ Django settings for Omnifin SaaS Lending Platform
 
 import os
 from pathlib import Path
-from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Security Settings
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production')
-DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-change-this-in-production')
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 # Application Definition
 INSTALLED_APPS = [
@@ -76,11 +75,11 @@ WSGI_APPLICATION = 'omnifin.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='omnifin_db'),
-        'USER': config('DB_USER', default='postgres'),
-        'PASSWORD': config('DB_PASSWORD', default='password'),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432'),
+        'NAME': os.getenv('DB_NAME', 'omnifin_db'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'password'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
 
@@ -139,9 +138,18 @@ REST_FRAMEWORK = {
     ],
 }
 
+# Fix for 301 redirects
+APPEND_SLASH = False
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8081",
+    "http://localhost:3000",
+]
+
 # CORS Configuration
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:8081",
     "http://127.0.0.1:3000",
     "http://localhost:19006",
 ]
@@ -165,7 +173,7 @@ ALLOWED_FILE_TYPES = [
 ]
 
 # Redis Configuration
-REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 # Celery Configuration
 CELERY_BROKER_URL = REDIS_URL
@@ -175,20 +183,23 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 
 # AI Service Configuration
-OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
-ELEVENLABS_API_KEY = config('ELEVENLABS_API_KEY', default='')
-ULTRAVOX_API_KEY = config('ULTRAVOX_API_KEY', default='')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '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')
+ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY', '')
+ULTRAVOX_API_KEY = os.getenv('ULTRAVOX_API_KEY', '')
+
+# OpenAI Model Configuration
+AI_MODEL = os.getenv('AI_MODEL', 'gpt-3.5-turbo')
 
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
-EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 
 # Security Settings
-SECURE_SSL_REDIRECT = not DEBUG
+SECURE_SSL_REDIRECT = False
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'

@@ -1,17 +1,54 @@
+// services/authService.js
 import axios from 'axios';
-import { API_BASE_URL } from '../utils/constants';
+import storage from '../utils/storage';
 
+const API_URL = 'http://localhost:8000/'; // Your Django API URL
+
+// Create axios instance
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_URL,
+  withCredentials: true, // Important: send cookies with requests
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',  // ← Add this
+  }
+
 });
 
-// Request interceptor to add token
+// Function to get CSRF token from cookies
+const getCsrfToken = () => {
+  if (typeof document !== 'undefined') {
+    const name = 'csrftoken';
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+  return null;
+};
+
+// Add CSRF token to all requests
 api.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem('authToken');
-    if (token) {
-      config.headers.Authorization = `Token ${token}`;
+    const csrfToken = getCsrfToken();
+    if (csrfToken) {
+      config.headers['X-CSRFToken'] = csrfToken;
     }
+    
+    // Add auth token if available
+    const token = await storage.getItem('authToken');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     return config;
   },
   (error) => {
@@ -19,75 +56,32 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle errors
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
-      await AsyncStorage.removeItem('authToken');
-      await AsyncStorage.removeItem('user');
-      // Redirect to login
-    }
-    return Promise.reject(error);
-  }
-);
-
 export const authService = {
-  login: (email, password) => {
-    return api.post('/auth/login/', { email, password });
-  },
-
-  register: (userData) => {
-    return api.post('/auth/register/', userData);
-  },
-
-  logout: () => {
-    return api.post('/auth/logout/');
-  },
-
-  getProfile: () => {
-    return api.get('/auth/me/');
-  },
-
-  updateProfile: (profileData) => {
-    return api.patch('/auth/profile/', profileData);
-  },
-
-  changePassword: (passwordData) => {
-    return api.post('/auth/password/change/', passwordData);
-  },
-
-  requestPasswordReset: (email) => {
-    return api.post('/auth/password/reset/', { email });
-  },
-
-  confirmPasswordReset: (token, newPassword) => {
-    return api.post('/auth/password/reset/confirm/', {
-      token,
-      new_password: newPassword
+  login: async (email, password) => {
+    // First, get CSRF token by making a GET request
+    await api.get('/api/csrf/'); // You need to create this endpoint
+    
+    // Then make the login request
+    const response = await api.post('/api/auth/login/', {
+      email,
+      password,
     });
+    return response;
   },
 
-  verifyEmail: () => {
-    return api.post('/auth/verify-email/');
+  register: async (userData) => {
+    await api.get('/api/csrf/');
+    const response = await api.post('/api/register/', userData);
+    return response;
   },
 
-  // TPB specific
-  getTPBProfile: () => {
-    return api.get('/auth/profile/tpb/');
+  logout: async () => {
+    const response = await api.post('/api/logout/');
+    return response;
   },
 
-  updateTPBProfile: (profileData) => {
-    return api.patch('/auth/profile/tpb/', profileData);
-  },
-
-  // Applicant specific
-  getApplicantProfile: () => {
-    return api.get('/auth/profile/applicant/');
-  },
-
-  updateApplicantProfile: (profileData) => {
-    return api.patch('/auth/profile/applicant/', profileData);
+  updateProfile: async (profileData) => {
+    const response = await api.put('/api/profile/', profileData);
+    return response;
   },
 };

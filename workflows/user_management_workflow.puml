@@ -1,0 +1,60 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 20
+skinparam shadowing false
+
+actor SuperAdmin
+actor Admin
+actor TPB
+actor Applicant
+participant "User Management System" as UMS
+participant "Authentication" as Auth
+
+title User Management & Role Hierarchy Workflow
+
+SuperAdmin -> UMS: Create Admin User
+activate UMS
+UMS -> Auth: Generate Credentials
+Auth -> UMS: Return User ID
+UMS -> UMS: Assign to SuperAdmin Group
+UMS -> SuperAdmin: Confirm User Creation
+deactivate UMS
+
+Admin -> UMS: Create TPB User
+activate UMS
+UMS -> Auth: Generate Credentials
+Auth -> UMS: Return User ID & Tracking Code
+UMS -> UMS: Assign to Admin Group
+UMS -> TPB: Send Welcome Email with Tracking Code
+deactivate UMS
+
+TPB -> UMS: Create Applicant User
+activate UMS
+UMS -> Auth: Generate Credentials
+Auth -> UMS: Return User ID
+UMS -> UMS: Link to TPB Tracking Code
+UMS -> Applicant: Send Welcome Email
+UMS -> TPB: Confirm Applicant Creation
+deactivate UMS
+
+Admin -> UMS: View Group Users
+activate UMS
+UMS -> UMS: Filter by Admin Group
+UMS -> Admin: Display User List
+deactivate UMS
+
+SuperAdmin -> UMS: View All Users
+activate UMS
+UMS -> UMS: No Filtering
+UMS -> SuperAdmin: Display Complete User List
+deactivate UMS
+
+Admin -> UMS: Suspend User
+activate UMS
+UMS -> UMS: Update User Status
+UMS -> Auth: Revoke Access
+UMS -> Admin: Confirm Suspension
+deactivate UMS
+
+@enduml

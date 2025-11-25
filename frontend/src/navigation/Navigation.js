@@ -4,26 +4,25 @@ import { AuthContext } from '../contexts/AuthContext';
 
 // Screens
 import LoginScreen from '../screens/LoginScreen';
-import RegisterScreen from '../screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ChatScreen from '../screens/ChatScreen';
-import VoiceChatScreen from '../screens/VoiceChatScreen';
-import ProfileScreen from '../screens/ProfileScreen';
 import ApplicationsScreen from '../screens/ApplicationsScreen';
-import DocumentsScreen from '../screens/DocumentsScreen';
 import DashboardScreen from '../screens/DashboardScreen';
-import AdminDashboardScreen from '../screens/AdminDashboardScreen';
+import VoiceChatScreen from '../screens/VoiceChatScreen';
+import DocumentsScreen from '../screens/DocumentsScreen';
 import TPBDashboardScreen from '../screens/TPBDashboardScreen';
+import AdminCommissionScreen from '../screens/AdminCommissionScreen';
+import LenderManagementScreen from '../screens/LenderManagementScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function Navigation() {
   const { user, isLoading } = useContext(AuthContext);
 
-  if (isLoading) {
-    return null; // Or a loading screen
-  }
-
+  // if (isLoading) {
+  //   return null; // Or a loading screen
+  // }
+  console.log("[Navigation] User state:", user);
   return (
     <Stack.Navigator
       screenOptions={{
@@ -44,11 +43,11 @@ export default function Navigation() {
             component={LoginScreen} 
             options={{ headerShown: false }}
           />
-          <Stack.Screen 
+          {/* <Stack.Screen 
             name="Register" 
             component={RegisterScreen} 
             options={{ title: 'Create Account' }}
-          />
+          /> */}
         </>
       ) : (
         // Main app screens
@@ -68,30 +67,50 @@ export default function Navigation() {
             component={VoiceChatScreen} 
             options={{ title: 'Voice Assistant' }}
           />
-          <Stack.Screen 
+          {/* <Stack.Screen 
             name="Profile" 
             component={ProfileScreen} 
             options={{ title: 'Profile' }}
-          />
+          /> */}
           <Stack.Screen 
             name="Applications" 
             component={ApplicationsScreen} 
             options={{ title: 'My Applications' }}
-          />
+          />   
           <Stack.Screen 
             name="Documents" 
             component={DocumentsScreen} 
             options={{ title: 'Documents' }}
           />
+          <Stack.Screen 
+            name="TPBDashboard" 
+            component={TPBDashboardScreen} 
+            options={{ title: 'TPB Dashboard' }}
+          />
+          <Stack.Screen 
+            name="AdminCommission" 
+            component={AdminCommissionScreen} 
+            options={{ title: 'Admin Commission' }}
+          />
+          <Stack.Screen 
+            name="LenderManagement" 
+            component={LenderManagementScreen} 
+            options={{ title: 'Lender Management' }}
+          />
+          {/* <Stack.Screen 
+            name="Documents" 
+            component={DocumentsScreen} 
+            options={{ title: 'Documents' }}
+          /> */}
           
           {/* Role-specific screens */}
-          {user.role === 'admin' && (
+          {/* {user.role === 'admin' && (
             <Stack.Screen 
               name="AdminDashboard" 
               component={AdminDashboardScreen} 
               options={{ title: 'Admin Dashboard' }}
             />
-          )}
+          )} */}
           
           {user.role === 'superadmin' && (
             <Stack.Screen 

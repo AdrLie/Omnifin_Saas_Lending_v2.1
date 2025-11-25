@@ -1,0 +1,60 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 20
+skinparam shadowing false
+
+actor TPB
+actor Applicant
+participant "Omnifin Platform" as Platform
+participant "Commission Engine" as Engine
+participant "Lender APIs" as Lender
+participant "Payment System" as Payment
+
+title Commission Tracking & Payout Workflow
+
+TPB -> Platform: Generate Tracking Link
+activate Platform
+Platform -> Engine: Create Unique Tracking ID
+Engine -> Platform: Return Tracking Code
+Platform -> TPB: Provide Tracking Link
+deactivate Platform
+
+Applicant -> Platform: Access via Tracking Link
+activate Platform
+Platform -> Engine: Log Referral with Tracking ID
+Engine -> Platform: Confirm Tracking
+deactivate Platform
+
+Applicant -> Platform: Complete Loan Application
+activate Platform
+Platform -> Lender: Submit Application
+activate Lender
+Lender -> Lender: Process Application
+Lender -> Platform: Update Status (Approved/Funded)
+deactivate Lender
+
+Platform -> Engine: Trigger Commission Calculation
+activate Engine
+Engine -> Engine: Calculate Commission Amount
+Engine -> Engine: Update TPB Earnings
+Engine -> Platform: Confirm Commission Recorded
+deactivate Engine
+
+deactivate Platform
+
+TPB -> Platform: View Commission Dashboard
+activate Platform
+Platform -> Engine: Fetch Commission Data
+Engine -> Platform: Return Earnings & Status
+Platform -> TPB: Display Commission Report
+deactivate Platform
+
+Engine -> Payment: Generate Payout Batch
+activate Payment
+Payment -> Payment: Process Payments
+Payment -> TPB: Send Payment
+Payment -> Engine: Update Payout Status
+deactivate Payment
+
+@enduml

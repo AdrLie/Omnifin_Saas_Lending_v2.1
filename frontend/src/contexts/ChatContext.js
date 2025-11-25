@@ -39,7 +39,7 @@ export const ChatProvider = ({ children }) => {
           updated[sessionId].messages = updated[sessionId].messages || [];
           updated[sessionId].messages.push(
             { sender: 'user', content: message },
-            { sender: 'ai', content: aiResponse }
+            { sender: 'assistant', content: aiResponse }
           );
         }
         return updated;
@@ -57,8 +57,11 @@ export const ChatProvider = ({ children }) => {
   const sendVoiceMessage = async (sessionId, audioFile, context = {}) => {
     setIsLoading(true);
     try {
+      // ✅ FIXED: Pass the file object directly, aiService will create FormData
       const response = await aiService.sendVoiceMessage(sessionId, audioFile, context);
-      const { text, response: aiResponse } = response.data;
+      
+      // ✅ FIXED: Backend returns { text, response, audio_response }
+      const { text, response: aiResponse, audio_response } = response.data;
       
       // Update conversation messages
       setConversations(prev => {
@@ -67,16 +70,23 @@ export const ChatProvider = ({ children }) => {
           updated[sessionId].messages = updated[sessionId].messages || [];
           updated[sessionId].messages.push(
             { sender: 'user', content: text, message_type: 'voice' },
-            { sender: 'ai', content: aiResponse }
+            { sender: 'assistant', content: aiResponse }
           );
         }
         return updated;
       });
       
-      return { text, aiResponse };
+      // ✅ FIXED: Return all data including audio_response
+      return { 
+        text, 
+        aiResponse, 
+        response: aiResponse, // Alias for compatibility
+        audio_response 
+      };
     } catch (error) {
       console.error('Error sending voice message:', error);
-      throw error;
+      // Re-throw with more info
+      throw new Error(error.response?.data?.message || error.message || 'Failed to send voice message');
     } finally {
       setIsLoading(false);
     }
