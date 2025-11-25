@@ -183,7 +183,7 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 
 # AI Service Configuration
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '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')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY', '')
 ULTRAVOX_API_KEY = os.getenv('ULTRAVOX_API_KEY', '')
 
