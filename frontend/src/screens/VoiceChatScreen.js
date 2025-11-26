@@ -47,12 +47,10 @@ export default function VoiceChatScreen({ navigation }) {
 
   const playAudioResponse = async (base64Audio) => {
     try {
-      // Unload previous sound if exists
       if (sound) {
         await sound.unloadAsync();
       }
 
-      // Create sound from base64
       const { sound: newSound } = await Audio.Sound.createAsync(
         { uri: `data:audio/mp3;base64,${base64Audio}` },
         { shouldPlay: true }
@@ -60,7 +58,6 @@ export default function VoiceChatScreen({ navigation }) {
       
       setSound(newSound);
       
-      // Cleanup when done playing
       newSound.setOnPlaybackStatusUpdate((status) => {
         if (status.didJustFinish) {
           newSound.unloadAsync();
@@ -86,26 +83,15 @@ export default function VoiceChatScreen({ navigation }) {
         copyToCacheDirectory: true 
       });
       
-      console.log('DocumentPicker result:', JSON.stringify(result, null, 2));
-      
       if (result.canceled === false && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         
-        // ✅ FIX: Ensure proper file object structure
         const file = {
           uri: asset.uri,
           type: asset.mimeType || 'audio/wav',
           name: asset.name || `voice_${Date.now()}.wav`,
         };
 
-        // Debug logs
-        console.log('File to upload:', JSON.stringify(file, null, 2));
-        console.log('File URI:', file.uri);
-        console.log('File type:', file.type);
-        console.log('File name:', file.name);
-        console.log('Session ID:', sessionId);
-
-        // Add user message to UI
         setMessages(prev => [
           ...prev,
           {
@@ -182,7 +168,6 @@ export default function VoiceChatScreen({ navigation }) {
         throw new Error('Failed to get recording URI');
       }
 
-      // ✅ FIX: Proper file object for React Native
       const file = {
         uri,
         type: 'audio/m4a', // iOS records in m4a by default
@@ -233,10 +218,10 @@ export default function VoiceChatScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Appbar.Header>
+      {/* <Appbar.Header>
         <Appbar.BackAction onPress={() => navigation.goBack()} />
         <Appbar.Content title="Voice Assistant" />
-      </Appbar.Header>
+      </Appbar.Header> */}
 
       <ScrollView style={styles.messagesContainer}>
         {messages.map(msg => (

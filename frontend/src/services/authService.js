@@ -46,7 +46,7 @@ api.interceptors.request.use(
     // Add auth token if available
     const token = await storage.getItem('authToken');
     if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+      config.headers['Authorization'] = `Token ${token}`;
     }
     
     return config;
@@ -71,7 +71,7 @@ export const authService = {
 
   register: async (userData) => {
     await api.get('/api/csrf/');
-    const response = await api.post('/api/register/', userData);
+    const response = await api.post('/api/auth/register/', userData);
     return response;
   },
 
@@ -81,7 +81,13 @@ export const authService = {
   },
 
   updateProfile: async (profileData) => {
-    const response = await api.put('/api/profile/', profileData);
-    return response;
-  },
+      // Axios interceptor already adds the Authorization header
+      const response = await api.put('/api/auth/profile/', profileData);
+      return response;
+    },
+  
+  getAllUsers: async () => {
+      const response = await api.get('/api/auth/users/');
+      return response;
+    }
 };

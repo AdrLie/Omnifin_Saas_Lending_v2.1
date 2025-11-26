@@ -13,6 +13,8 @@ import DocumentsScreen from '../screens/DocumentsScreen';
 import TPBDashboardScreen from '../screens/TPBDashboardScreen';
 import AdminCommissionScreen from '../screens/AdminCommissionScreen';
 import LenderManagementScreen from '../screens/LenderManagementScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import RegisterScreen from '../screens/RegisterScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -43,11 +45,11 @@ export default function Navigation() {
             component={LoginScreen} 
             options={{ headerShown: false }}
           />
-          {/* <Stack.Screen 
+          <Stack.Screen 
             name="Register" 
             component={RegisterScreen} 
-            options={{ title: 'Create Account' }}
-          /> */}
+            options={{ headerShown: false }}
+          />
         </>
       ) : (
         // Main app screens
@@ -67,11 +69,11 @@ export default function Navigation() {
             component={VoiceChatScreen} 
             options={{ title: 'Voice Assistant' }}
           />
-          {/* <Stack.Screen 
+          <Stack.Screen 
             name="Profile" 
             component={ProfileScreen} 
             options={{ title: 'Profile' }}
-          /> */}
+          />
           <Stack.Screen 
             name="Applications" 
             component={ApplicationsScreen} 
@@ -104,29 +106,29 @@ export default function Navigation() {
           /> */}
           
           {/* Role-specific screens */}
-          {/* {user.role === 'admin' && (
+          {(user.role === 'admin' || user.role === 'superadmin') && (
             <Stack.Screen 
               name="AdminDashboard" 
-              component={AdminDashboardScreen} 
+              component={require('../screens/AdminDashboardScreen').default} 
               options={{ title: 'Admin Dashboard' }}
-            />
-          )} */}
-          
-          {user.role === 'superadmin' && (
-            <Stack.Screen 
-              name="Dashboard" 
-              component={DashboardScreen} 
-              options={{ title: 'Super Admin Dashboard' }}
             />
           )}
           
-          {user.role === 'tpb' && (
+      {user.role === 'admin' && (
+  < Stack.Screen 
+    name="Dashboard" 
+    component={DashboardScreen} 
+    options={{ title: 'Super Admin Dashboard' }}
+  />
+)}
+          
+          {/* {user.role === 'tpb' && (
             <Stack.Screen 
               name="TPBDashboard" 
               component={TPBDashboardScreen} 
               options={{ title: 'TPB Dashboard' }}
             />
-          )}
+          )} */}
         </>
       )}
     </Stack.Navigator>

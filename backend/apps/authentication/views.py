@@ -30,6 +30,8 @@ from apps.authentication.permissions import IsAdmin, IsSuperAdmin, IsTPB
 class UserRegistrationView(generics.CreateAPIView):
     """User registration view"""
     serializer_class = UserRegistrationSerializer
+    authentication_classes = [] 
+    
     permission_classes = [permissions.AllowAny]
     
     def create(self, request, *args, **kwargs):
@@ -50,11 +52,29 @@ class UserRegistrationView(generics.CreateAPIView):
 class UserLoginView(generics.GenericAPIView):
     """User login view"""
     serializer_class = UserLoginSerializer
+    authentication_classes = [] 
+    
+    # This alone is not enough if a bad token is sent!
     permission_classes = [permissions.AllowAny]
     
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        
+        # 1. Custom Validation Handling
+        if not serializer.is_valid():
+            # Create a clean error message from the serializer errors
+            error_messages = []
+            for field, errors in serializer.errors.items():
+                error_messages.append(f"{field}: {errors[0]}")
+            
+            return Response({
+                'success': False,
+                'message': 'Validation Failed',
+                'error': error_messages[0] if error_messages else 'Invalid data', # robust for your frontend
+                'errors': serializer.errors # Full details if needed
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2. Success Logic
         user = serializer.validated_data['user']
         
         # Create or get token
@@ -64,11 +84,15 @@ class UserLoginView(generics.GenericAPIView):
         user.last_login = timezone.now()
         user.save()
         
+        # 3. Standard Success Response
         return Response({
-            'user': UserSerializer(user).data,
-            'token': token.key
-        })
-
+            'success': True,
+            'message': 'Login Successful',
+            'data': {
+                'user': UserSerializer(user).data,
+                'token': token.key
+            }
+        }, status=status.HTTP_200_OK)
 
 class UserLogoutView(generics.GenericAPIView):
     """User logout view"""

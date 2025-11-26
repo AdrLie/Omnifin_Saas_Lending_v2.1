@@ -33,6 +33,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         validated_data.pop('password_confirm')
+        # Ensure first_name and last_name are empty if not provided
+        if 'first_name' not in validated_data:
+            validated_data['first_name'] = ''
+        if 'last_name' not in validated_data:
+            validated_data['last_name'] = ''
+        if 'phone' not in validated_data:
+            validated_data['phone'] = ''
         user = User.objects.create_user(**validated_data)
         return user
 

@@ -57,13 +57,9 @@ export const ChatProvider = ({ children }) => {
   const sendVoiceMessage = async (sessionId, audioFile, context = {}) => {
     setIsLoading(true);
     try {
-      // ✅ FIXED: Pass the file object directly, aiService will create FormData
+      // Use aiService.sendVoiceMessage, which internally uses axios and the correct endpoint
       const response = await aiService.sendVoiceMessage(sessionId, audioFile, context);
-      
-      // ✅ FIXED: Backend returns { text, response, audio_response }
       const { text, response: aiResponse, audio_response } = response.data;
-      
-      // Update conversation messages
       setConversations(prev => {
         const updated = { ...prev };
         if (updated[sessionId]) {
@@ -75,17 +71,14 @@ export const ChatProvider = ({ children }) => {
         }
         return updated;
       });
-      
-      // ✅ FIXED: Return all data including audio_response
-      return { 
-        text, 
-        aiResponse, 
-        response: aiResponse, // Alias for compatibility
-        audio_response 
+      return {
+        text,
+        aiResponse,
+        response: aiResponse,
+        audio_response
       };
     } catch (error) {
       console.error('Error sending voice message:', error);
-      // Re-throw with more info
       throw new Error(error.response?.data?.message || error.message || 'Failed to send voice message');
     } finally {
       setIsLoading(false);

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/constants';
+import storage from '../utils/storage';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -8,7 +9,7 @@ const api = axios.create({
 // Request interceptor to add token
 api.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem('authToken');
+    const token = await storage.getItem('authToken');
     if (token) {
       config.headers.Authorization = `Token ${token}`;
     }

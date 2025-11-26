@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: omnifin_db
       POSTGRES_USER: omnifin_user
-      POSTGRES_PASSWORD: omnifin_password
+      POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -46,13 +46,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    environment:
-      - DEBUG=True
-      - DB_HOST=db
-      - DB_NAME=omnifin_db
-      - DB_USER=omnifin_user
-      - DB_PASSWORD=omnifin_password
-      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - ./backend/.env
     volumes:
       - ./backend:/app
     depends_on:
@@ -60,17 +55,23 @@ services:
       - redis
     command: celery -A omnifin worker --loglevel=info
 
-  nginx:
-    image: nginx:alpine
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "80:80"
-      - "443:443"
+      - "19006:19006"
+      - "19000:19000"
+      - "19001:19001" 
+      - "8081:8081"   
+    env_file:
+      - ./frontend/.env
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./backend/staticfiles:/app/static:ro
-      - ./backend/media:/app/media:ro
-    depends_on:
-      - backend
+      - ./frontend:/app
+    environment:
+      - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+    command: npx expo start --web --non-interactive
 
 volumes:
   postgres_data:

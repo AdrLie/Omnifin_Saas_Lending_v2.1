@@ -44,40 +44,20 @@ export const aiService = {
     });
   },
  sendVoiceMessage: async (sessionId, audioFile, context = {}) => {
-    try {
-      console.log('=== VOICE MESSAGE DEBUG ===');
-      console.log('Session ID:', sessionId);
-      console.log('Audio file object:', audioFile);
-      console.log('Audio file URI:', audioFile?.uri);
-      console.log('Audio file type:', audioFile?.type);
-      console.log('Audio file name:', audioFile?.name);
-      console.log('Platform:', Platform.OS);
-      
+    try {      
       const formData = new FormData();
-      
-      // ✅ CRITICAL FIX: Handle Web vs Native differently
+
       if (Platform.OS === 'web') {
-        console.log('Using WEB file upload method');
-        
-        // For Web: Fetch the file and create a proper Blob
-        console.log('Fetching file from URI:', audioFile.uri);
         const response = await fetch(audioFile.uri);
-        console.log('Fetch response status:', response.status);
-        console.log('Fetch response type:', response.headers.get('content-type'));
         
         const blob = await response.blob();
-        console.log('Blob created, size:', blob.size, 'type:', blob.type);
         
-        // Create a File object from the Blob (web standard)
         const file = new File([blob], audioFile.name, { 
           type: audioFile.type || blob.type || 'audio/wav' 
         });
         
-        console.log('File object created:', file.name, file.size, file.type);
         formData.append('audio_file', file);
       } else {
-        console.log('Using NATIVE file upload method');
-        // For Native: Use the standard React Native format
         formData.append('audio_file', {
           uri: audioFile.uri,
           type: audioFile.type || 'audio/wav',
@@ -92,11 +72,8 @@ export const aiService = {
         formData.append('context', JSON.stringify(context));
       }
 
-      console.log('FormData created, posting to:', `${API_BASE_URL}/ai/voice`);
-
       // Get token manually for this request
       const token = await storage.getItem('authToken');
-      console.log('Token retrieved:', token ? 'YES' : 'NO');
 
       // Use axios with explicit headers
       const response = await axios({
@@ -108,17 +85,11 @@ export const aiService = {
           'Content-Type': 'multipart/form-data',
           'Accept': 'application/json',
         },
-        timeout: 60000, // 60 seconds
+        timeout: 60000,
       });
 
-      console.log('Response received:', response.status);
-      console.log('Response data:', response.data);
       return response;
     } catch (error) {
-      console.error('=== VOICE UPLOAD ERROR ===');
-      console.error('Error message:', error.message);
-      console.error('Error response:', error.response?.data);
-      console.error('Error status:', error.response?.status);
       throw error;
     }
   },

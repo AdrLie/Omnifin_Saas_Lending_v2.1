@@ -32,14 +32,14 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const response = await authService.login(email, password);
-      const { user, token } = response.data;
+      const { user, token } = response.data.data;
       
       setUser(user);
       setToken(token);
       
       await storage.setItem('authToken', token);
       await storage.setItem('user', JSON.stringify(user));
-      
+      console.log(response, 'RESPOINSE')
       return { success: true };
     } catch (error) {
       console.error('Login error:', error);
@@ -102,6 +102,16 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const getAllUsers = async () => {
+    try {
+      const response = await authService.getAllUsers();
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      return [];
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -112,6 +122,7 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         updateProfile,
+        getAllUsers
       }}
     >
       {children}

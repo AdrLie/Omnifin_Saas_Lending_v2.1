@@ -1,38 +1,58 @@
-import React, { useState, useContext } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { TextInput, Button, Card, Title, Paragraph, ActivityIndicator } from 'react-native-paper';
+import React, { useState, useContext, useRef } from 'react'; // Added useRef here
+import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { TextInput, Button, Card, Title, Paragraph, ActivityIndicator, HelperText } from 'react-native-paper';
 import { AuthContext } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
+
 export default function LoginScreen() {
   const navigation = useNavigation();
+  const { login } = useContext(AuthContext);
+
+  // 1. Create a ref for the password input so we can focus it later
+  const passwordInputRef = useRef(null);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useContext(AuthContext);
+  const [error, setError] = useState('');
 
   const handleLogin = async () => {
-  if (!email || !password) {
-    Alert.alert('Error', 'Please fill in all fields');
-    return;
-  }
+    // Clear previous errors
+    setError('');
 
-  setLoading(true);
-  try {
-    console.log("[LoginScreen] Calling login() from AuthContext");
-    const result = await login(email, password);
-    if (!result.success) {
-      Alert.alert('Login Failed', result.error);
-    } else {
-      navigation.replace('Home'); // or 'Home', depending on your routes
+    if (!email || !password) {
+      setError('We need both your email and password to proceed.');
+      return;
     }
-  } catch (error) {
-    console.log("[LoginScreen] Unexpected error:", error);
-    Alert.alert('Error', 'An unexpected error occurred');
-  } finally {
-    setLoading(false);
-    console.log("[LoginScreen] Loading set to false");
-  }
-};
+
+    setLoading(true);
+    try {
+      const result = await login(email, password);
+      
+      if (!result.success) {
+        let errorMessage = 'Login failed. Check your credentials.';
+        
+        const err = result.error;
+        if (err) {
+          if (typeof err === 'string') {
+            errorMessage = err.replace(/non_field_errors:|detail:/gi, '').trim();
+            errorMessage = errorMessage.replace(/[\[\]"']/g, '');
+          } else if (typeof err === 'object') {
+            const message = err.non_field_errors || err.detail || Object.values(err)[0];
+            errorMessage = Array.isArray(message) ? message[0] : message;
+          }
+        }
+        
+        setError(errorMessage);
+      } else {
+        navigation.replace('Home');
+      }
+    } catch (error) {
+      setError('Something went wrong on the server. Try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -43,36 +63,58 @@ export default function LoginScreen() {
             Your AI-powered lending platform
           </Paragraph>
 
+          {error ? (
+            <View style={styles.errorContainer}>
+              <HelperText type="error" visible={true} style={styles.errorText}>
+                {error}
+              </HelperText>
+            </View>
+          ) : null}
+
           <TextInput
             label="Email"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (error) setError('');
+            }}
             style={styles.input}
             keyboardType="email-address"
             autoCapitalize="none"
-            left={<TextInput.Icon name="email" />}
+            left={<TextInput.Icon icon="email" />}
+            error={!!error}
+            // 2. When hitting enter on Email, jump to Password
+            returnKeyType="next"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
+            blurOnSubmit={false}
           />
 
           <TextInput
+            // 3. Attach the ref here
+            ref={passwordInputRef}
             label="Password"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (error) setError('');
+            }}
             style={styles.input}
             secureTextEntry
-            left={<TextInput.Icon name="lock" />}
+            left={<TextInput.Icon icon="lock" />}
+            error={!!error}
+            // 4. When hitting enter here, fire the login function
+            returnKeyType="done"
+            onSubmitEditing={handleLogin}
           />
 
           <Button
             mode="contained"
-            onPress={() => {
-              console.log("[LoginScreen] Sign In button pressed");
-              handleLogin();
-            }}
+            onPress={handleLogin}
             style={styles.button}
-            icon="login"
             disabled={loading}
+            icon="login"
           >
-            {loading ? <ActivityIndicator size="small" style={{ marginRight: 10 }} /> : null}
+            {loading ? <ActivityIndicator color="white" size="small" style={{ marginRight: 10 }} /> : null}
             Sign In
           </Button>
 
@@ -99,16 +141,30 @@ const styles = StyleSheet.create({
   card: {
     padding: 20,
     elevation: 4,
+    borderRadius: 8,
   },
   title: {
     textAlign: 'center',
     marginBottom: 10,
     color: '#6200EE',
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   subtitle: {
     textAlign: 'center',
     marginBottom: 30,
     color: '#666',
+  },
+  errorContainer: {
+    marginBottom: 15,
+    backgroundColor: '#FFEBEE',
+    borderRadius: 8,
+    paddingVertical: 4,
+  },
+  errorText: {
+    textAlign: 'center',
+    color: '#D32F2F',
+    fontWeight: 'bold',
   },
   input: {
     marginBottom: 15,
@@ -116,12 +172,9 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 20,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   linkButton: {
     marginTop: 15,
-  },
-  loader: {
-    marginTop: 20,
   },
 });
