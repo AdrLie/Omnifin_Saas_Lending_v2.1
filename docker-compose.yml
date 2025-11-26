@@ -23,13 +23,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    environment:
-      - DEBUG=True
-      - DB_HOST=db
-      - DB_NAME=omnifin_db
-      - DB_USER=omnifin_user
-      - DB_PASSWORD=omnifin_password
-      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - ./backend/.env
     volumes:
       - ./backend:/app
     ports:
