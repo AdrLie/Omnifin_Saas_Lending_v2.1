@@ -1,0 +1,72 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam roundcorner 20
+skinparam shadowing false
+
+actor Applicant
+participant "Omnifin Platform" as Platform
+participant "AI Chat Interface" as AI
+participant "Document Upload" as Docs
+participant "Lender APIs" as Lender
+participant "TPB Dashboard" as TPB
+
+title Omnifin Loan Application Workflow
+
+Applicant -> Platform: Access Platform
+activate Platform
+
+Platform -> Applicant: Choose Interaction Method
+Applicant -> Platform: Select Text/Voice Chat
+
+Platform -> AI: Initialize AI Interface
+activate AI
+
+AI -> Applicant: Welcome & Loan Requirements
+Applicant -> AI: State Loan Purpose & Amount
+
+AI -> AI: Analyze Requirements
+AI -> Applicant: Ask for Personal Information
+Applicant -> AI: Provide Personal Details
+
+AI -> AI: Validate Information
+AI -> Applicant: Ask for Financial Information
+Applicant -> AI: Provide Financial Details
+
+AI -> AI: Calculate Eligibility
+AI -> Applicant: Request Supporting Documents
+
+Applicant -> Docs: Upload Documents
+activate Docs
+Docs -> Platform: Store Documents Securely
+Docs -> AI: Confirm Document Upload
+deactivate Docs
+
+AI -> AI: Complete Information Gathering
+AI -> Platform: Submit Application Data
+
+Platform -> Platform: Match with Suitable Lenders
+Platform -> Lender: Submit Application via API
+activate Lender
+
+Lender -> Lender: Process Application
+Lender -> Platform: Return Decision/Status
+
+deactivate Lender
+
+Platform -> AI: Update Application Status
+AI -> Applicant: Communicate Lender Response
+
+deactivate AI
+
+Platform -> TPB: Update Commission Tracking (if applicable)
+activate TPB
+TPB -> TPB: Track Earnings
+deactivate TPB
+
+Platform -> Applicant: Display Loan Offers/Decision
+Applicant -> Platform: Accept/Decline Offer
+
+deactivate Platform
+
+@enduml
