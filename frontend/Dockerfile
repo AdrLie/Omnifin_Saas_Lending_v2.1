@@ -1,5 +1,5 @@
 # Omnifin Frontend Dockerfile (Expo/React Native Web)
-FROM node:20-slim
+FROM node:18-alpine
 
 # Set working directory
 WORKDIR /app
@@ -22,7 +22,7 @@ COPY package.json ./
 # RUN yarn install --frozen-lockfile
 
 # If you use npm
-RUN npm install --legacy-peer-deps
+RUN npm install
 
 # Copy rest of the frontend project
 COPY . ./
