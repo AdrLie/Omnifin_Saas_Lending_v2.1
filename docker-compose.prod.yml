@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: omnifin_db
+      POSTGRES_USER: omnifin_user
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    image: omnifin.be:latest
+    environment:
+      - DEBUG=True
+      - DB_HOST=db
+      - DB_NAME=omnifin_db
+      - DB_USER=omnifin_user
+      - DB_PASSWORD=omnifin_password
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
+
+  celery:
+    image: omnifin.be:latest
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - db
+      - redis
+    command: celery -A omnifin worker --loglevel=info
+
+
+  frontend:
+    image: omnifin.fe:latest
+    ports:
+      - "19006:19006"
+      - "19000:19000"
+      - "19001:19001" 
+      - "8081:8081"   
+    env_file:
+      - ./frontend/.env
+    volumes:
+      - ./frontend:/app
+    environment:
+      - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+    command: npx expo start --web --non-interactive
+
+volumes:
+  postgres_data:
+  redis_data:
