@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "5432:5432"
 
   redis:
     image: redis:7-alpine
@@ -28,28 +28,14 @@ services:
     volumes:
       - ./backend:/app
     ports:
-      - "8001:8000"
+      - "8000:8000"
     depends_on:
       - db
       - redis
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             python manage.py runserver 0.0.0.0:8001"
-
-  # celery:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile
-  #   env_file:
-  #     - ./backend/.env
-  #   volumes:
-  #     - ./backend:/app
-  #   depends_on:
-  #     - db
-  #     - redis
-  #   command: celery -A omnifin worker --loglevel=info
-
+             python manage.py runserver 0.0.0.0:8000" 
 
   frontend:
     build:
@@ -64,9 +50,11 @@ services:
       - ./frontend/.env
     volumes:
       - ./frontend:/app
+      - /app/node_modules  # FIX 3: THIS IS THE KEY! Protects the container's modules.
     environment:
       - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
-    command: npx expo start --web --non-interactive
+    # FIX 4: Added --host 0.0.0.0 so the browser can reach it
+    command: npx expo start --web
 
 volumes:
   postgres_data:
