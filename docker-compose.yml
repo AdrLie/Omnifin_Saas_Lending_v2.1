@@ -28,14 +28,14 @@ services:
     volumes:
       - ./backend:/app
     ports:
-      - "8001:8000"
+      - "8001:8001"
     depends_on:
       - db
       - redis
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             python manage.py runserver 0.0.0.0:8001"
+             python manage.py runserver 154.12.252.68:8001"
 
   frontend:
     build:

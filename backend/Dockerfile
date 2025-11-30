@@ -23,4 +23,4 @@ RUN chmod +x /app/manage.py
 EXPOSE 8001
 
 # Default command
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8001"]
+CMD ["python", "manage.py", "runserver", "154.12.252.68:8001"]
