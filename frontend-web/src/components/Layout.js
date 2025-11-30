@@ -163,13 +163,13 @@ const Layout = () => {
             {navigationItems.find(item => item.path === location.pathname)?.text || 'Dashboard'}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Tooltip title="Notifications">
+           {/* <Tooltip title="Notifications">
               <IconButton color="inherit">
                 <Badge badgeContent={4} color="secondary">
                   <MenuIcon />
                 </Badge>
               </IconButton>
-            </Tooltip>
+            </Tooltip> */}
             <Tooltip title="Account settings">
               <IconButton onClick={handleProfileMenuOpen} sx={{ p: 0 }}>
                 <Avatar sx={{ width: 32, height: 32 }}>

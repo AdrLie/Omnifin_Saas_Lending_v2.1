@@ -1,11 +1,11 @@
 // services/authService.js
 import axios from 'axios';
+import { API_BASE_URL } from '../utils/constants';
 
-const API_URL = 'http://localhost:8000/' || process.env.API_BASE_URL; // Your Django API URL
 
 // Create axios instance
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: API_BASE_URL,
   withCredentials: true, // Important: send cookies with requests
   headers: {
     'Content-Type': 'application/json',
@@ -58,10 +58,10 @@ api.interceptors.request.use(
 export const authService = {
   login: async (email, password) => {
     // First, get CSRF token by making a GET request
-    await api.get('/api/csrf/'); // You need to create this endpoint
+    await api.get('/csrf/'); // You need to create this endpoint
     
     // Then make the login request
-    const response = await api.post('/api/auth/login/', {
+    const response = await api.post('/auth/login/', {
       email,
       password,
     });
@@ -69,24 +69,24 @@ export const authService = {
   },
 
   register: async (userData) => {
-    await api.get('/api/csrf/');
-    const response = await api.post('/api/auth/register/', userData);
+    await api.get('/csrf/');
+    const response = await api.post('/auth/register/', userData);
     return response;
   },
 
   logout: async () => {
-    const response = await api.post('/api/logout/');
+    const response = await api.post('/logout/');
     return response;
   },
 
   updateProfile: async (profileData) => {
       // Axios interceptor already adds the Authorization header
-      const response = await api.put('/api/auth/profile/', profileData);
+      const response = await api.put('/auth/profile/', profileData);
       return response;
     },
   
   getAllUsers: async () => {
-      const response = await api.get('/api/auth/users/');
+      const response = await api.get('/auth/users/');
       return response;
     }
 };
