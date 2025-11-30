@@ -146,7 +146,7 @@ APPEND_SLASH = False
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8081",
     "http://localhost:3001",
-    "http://154.12.252.68:8081",
+    "http://154.12.252.68:3001",
 ]
 
 # CORS Configuration
@@ -155,7 +155,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8081",
     "http://127.0.0.1:3000",
     "http://localhost:19006",
-    "http://154.12.252.68:8081",
+    "http://154.12.252.68:3001",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
