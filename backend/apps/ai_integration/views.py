@@ -10,6 +10,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 from apps.ai_integration.models import Prompt, Knowledge, Conversation, Message
+from django.db import transaction
 from apps.ai_integration.serializers import (
     PromptSerializer, PromptCreateSerializer, KnowledgeSerializer, KnowledgeCreateSerializer,
     ConversationSerializer, ConversationCreateSerializer, MessageSerializer,
@@ -104,6 +105,32 @@ class ConversationViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         conversation = serializer.save()
         return Response(ConversationSerializer(conversation).data, status=status.HTTP_201_CREATED)
+
+
+def _get_or_create_conversation(session_id, user, is_voice_chat=False):
+    """Safely get an existing conversation for (user, session_id) or create one.
+
+    Uses a conservative lookup and transaction to avoid MultipleObjectsReturned when
+    duplicate rows exist. Returns (conversation, created_bool).
+    """
+    # Prefer explicit user-scoped lookup to avoid matching multiple users with same session_id
+    conv = Conversation.objects.filter(session_id=session_id, user=user).order_by('-started_at').first()
+    if conv:
+        return conv, False
+
+    # No conversation exists yet for this user+session_id. Create one atomically.
+    with transaction.atomic():
+        # Re-check under transaction to avoid race creating duplicates
+        conv = Conversation.objects.select_for_update().filter(session_id=session_id, user=user).order_by('-started_at').first()
+        if conv:
+            return conv, False
+
+        conv = Conversation.objects.create(
+            user=user,
+            session_id=session_id,
+            is_voice_chat=is_voice_chat
+        )
+        return conv, True
     
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
@@ -136,14 +163,8 @@ def chat_message(request):
         is_voice = serializer.validated_data.get('is_voice', False)
         context = serializer.validated_data.get('context', {})
         
-        # Get or create conversation
-        conversation, created = Conversation.objects.get_or_create(
-            session_id=session_id,
-            defaults={
-                'user': request.user,
-                'is_voice_chat': is_voice
-            }
-        )
+        # Get or create conversation (defensive to avoid duplicate rows)
+        conversation, created = _get_or_create_conversation(session_id, request.user, is_voice_chat=is_voice)
         
         # Process message with AI
         ai_service = AIChatService()
@@ -182,14 +203,8 @@ def voice_message(request):
         voice_service = VoiceService()
         text = voice_service.speech_to_text(audio_file)
         
-        # Get or create conversation
-        conversation, created = Conversation.objects.get_or_create(
-            session_id=session_id,
-            defaults={
-                'user': request.user,
-                'is_voice_chat': True
-            }
-        )
+        # Get or create conversation (defensive to avoid duplicate rows)
+        conversation, created = _get_or_create_conversation(session_id, request.user, is_voice_chat=True)
         
         # Process message with AI
         ai_service = AIChatService()
@@ -293,7 +308,13 @@ def create_conversation(request):
 def get_conversation_history(request, session_id):
     """Get conversation history"""
     try:
-        conversation = Conversation.objects.get(session_id=session_id, user=request.user)
+        conversation = Conversation.objects.filter(session_id=session_id, user=request.user).order_by('-started_at').first()
+        if not conversation:
+            return Response(
+                {'error': 'Conversation not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         serializer = ConversationSerializer(conversation)
         return Response(serializer.data)
     

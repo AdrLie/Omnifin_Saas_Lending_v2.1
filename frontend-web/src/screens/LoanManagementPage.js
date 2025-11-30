@@ -109,7 +109,27 @@ const LoanManagementPage = () => {
     try {
       setLoading(true);
       const data = await loanService.getAllLoans();
-      setLoans(data);
+      // Normalize response to an array. API may return { results: [...] } or { applications: [...] }
+      let loansArray = [];
+      if (Array.isArray(data)) {
+        loansArray = data;
+      } else if (data && Array.isArray(data.results)) {
+        loansArray = data.results;
+      } else if (data && Array.isArray(data.applications)) {
+        loansArray = data.applications;
+      } else if (data && Array.isArray(data.loans)) {
+        loansArray = data.loans;
+      } else {
+        // If data is an object with keys like {applications, lenders, offers}, try to pick the first array-valued key
+        for (const k of Object.keys(data || {})) {
+          if (Array.isArray(data[k])) {
+            loansArray = data[k];
+            break;
+          }
+        }
+      }
+
+      setLoans(loansArray);
     } catch (err) {
       setError('Failed to load loans');
     } finally {
@@ -202,13 +222,13 @@ const LoanManagementPage = () => {
   };
 
   const getStatusLabel = (status) => {
-    return status.split('_').map(word => 
+    return status.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   };
 
   const getTypeLabel = (type) => {
-    return type.split('_').map(word => 
+    return type.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   };
@@ -223,6 +243,12 @@ const LoanManagementPage = () => {
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString();
   };
+
+  // Safe derived values to avoid rendering objects/arrays directly in JSX
+  const totalApplications = Array.isArray(filteredLoans) ? filteredLoans.length : 0;
+  const approvedCount = Array.isArray(filteredLoans) ? filteredLoans.filter(l => l.status === 'approved').length : 0;
+  const totalValue = Array.isArray(filteredLoans) ? filteredLoans.reduce((sum, loan) => sum + (loan?.amount || 0), 0) : 0;
+  const approvalRate = totalApplications > 0 ? Math.round((approvedCount / totalApplications) * 100) : 0;
 
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
@@ -343,7 +369,7 @@ const LoanManagementPage = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredLoans
+                {(filteredLoans || [])
                   .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                   .map((loan) => (
                     <TableRow key={loan.id}>
@@ -430,7 +456,7 @@ const LoanManagementPage = () => {
               <Card elevation={0} sx={{ bgcolor: 'grey.50' }}>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <Typography variant="h5" color="primary">
-                    {filteredLoans.length}
+                    {totalApplications}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Total Applications
@@ -442,7 +468,7 @@ const LoanManagementPage = () => {
               <Card elevation={0} sx={{ bgcolor: 'grey.50' }}>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <Typography variant="h5" color="success.main">
-                    {filteredLoans.filter(l => l.status === 'approved').length}
+                    {approvedCount}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Approved
@@ -454,9 +480,7 @@ const LoanManagementPage = () => {
               <Card elevation={0} sx={{ bgcolor: 'grey.50' }}>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <Typography variant="h5" color="warning.main">
-                    {formatCurrency(
-                      filteredLoans.reduce((sum, loan) => sum + loan.amount, 0)
-                    )}
+                    {formatCurrency(totalValue)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Total Value
@@ -468,9 +492,7 @@ const LoanManagementPage = () => {
               <Card elevation={0} sx={{ bgcolor: 'grey.50' }}>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <Typography variant="h5" color="info.main">
-                    {filteredLoans.length > 0 ? 
-                      Math.round((filteredLoans.filter(l => l.status === 'approved').length / filteredLoans.length) * 100) : 0
-                    }%
+                    {approvalRate}%
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Approval Rate
