@@ -34,16 +34,16 @@ export const AuthProvider = ({ children }) => {
 
       setUser(user);
       setToken(token);
-      
+
       localStorage.setItem('authToken', token);
       localStorage.setItem('user', JSON.stringify(user));
-      
+
       return { success: true };
     } catch (error) {
       console.error('Login error:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.error || 'Login failed' 
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Login failed'
       };
     }
   };
@@ -52,19 +52,19 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await authService.register(userData);
       const { user, token } = response.data;
-      
+
       setUser(user);
       setToken(token);
-      
+
       localStorage.setItem('authToken', token);
       localStorage.setItem('user', JSON.stringify(user));
-      
+
       return { success: true };
     } catch (error) {
       console.error('Registration error:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.error || 'Registration failed' 
+      return {
+        success: false,
+        error: error.response?.data || 'Registration failed'
       };
     }
   };
@@ -86,16 +86,16 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await authService.updateProfile(profileData);
       const updatedUser = response.data;
-      
+
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      
+
       return { success: true };
     } catch (error) {
       console.error('Profile update error:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.error || 'Profile update failed' 
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Profile update failed'
       };
     }
   };

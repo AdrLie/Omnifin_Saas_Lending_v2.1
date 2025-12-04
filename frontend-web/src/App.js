@@ -17,6 +17,7 @@ import UserManagementPage from './screens/UserManagementPage';
 import AnalyticsPage from './screens/AnalyticsPage';
 import LoanManagementPage from './screens/LoanManagementPage';
 import { UserProvider } from './contexts/UserContext';
+import RegisterPage from './screens/RegisterPage';
 
 // Create a custom theme with purple highlights as requested
 const theme = createTheme({
@@ -58,7 +59,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           textTransform: 'none',
-          borderRadius: 8,
+          borderRadius: 0,
           fontWeight: 500,
         },
       },
@@ -66,14 +67,14 @@ const theme = createTheme({
     MuiPaper: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: 0,
         },
       },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: 0,
         },
       },
     },
@@ -129,6 +130,7 @@ function App() {
               <Routes>
                 {/* Public Routes */}
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
 
                 {/* Protected Routes */}
                 <Route path="/" element={
@@ -168,7 +170,7 @@ function App() {
                     </RoleBasedRoute>
                   } />
                   <Route path="admin/loans" element={
-                    <RoleBasedRoute allowedRoles={['super_admin', 'admin', 'tbp']}>
+                    <RoleBasedRoute allowedRoles={['super_admin', 'admin', 'tpb']}>
                       <LoanManagementPage />
                     </RoleBasedRoute>
                   } />

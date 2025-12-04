@@ -64,7 +64,9 @@ const UserManagementPage = () => {
     role: 'applicant',
     company: '',
     is_active: true,
-    mfa_enabled: false
+    mfa_enabled: false,
+    password: '',
+    password_confirm: '',
   });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -74,7 +76,7 @@ const UserManagementPage = () => {
 
   const roles = [
     { value: 'applicant', label: 'Loan Applicant' },
-    { value: 'tbp', label: 'Third Party Broker' },
+    { value: 'tpb', label: 'Third Party Broker' },
     { value: 'admin', label: 'Administrator' },
     { value: 'super_admin', label: 'Super Administrator' }
   ];
@@ -243,7 +245,7 @@ const UserManagementPage = () => {
     const colors = {
       'super_admin': 'error',
       'admin': 'warning',
-      'tbp': 'info',
+      'tpb': 'info',
       'applicant': 'success'
     };
     return colors[role] || 'default';
@@ -253,7 +255,7 @@ const UserManagementPage = () => {
     const labels = {
       'super_admin': 'Super Admin',
       'admin': 'Administrator',
-      'tbp': 'Third Party Broker',
+      'tpb': 'Third Party Broker',
       'applicant': 'Loan Applicant'
     };
     return labels[role] || role;
@@ -261,10 +263,18 @@ const UserManagementPage = () => {
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
-    setCurrentUser(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    if (name === 'password') {
+      setCurrentUser(prev => ({
+        ...prev,
+        password: value,
+        password_confirm: value,
+      }));
+    } else {
+      setCurrentUser(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   const handleSwitchChange = (name) => (event) => {
@@ -336,7 +346,7 @@ const UserManagementPage = () => {
             <Grid item xs={12} md={4}>
               <TextField
                 fullWidth
-                placeholder="Search by name, email, or company..."
+                placeholder="Search by name, email"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 InputProps={{
@@ -374,7 +384,7 @@ const UserManagementPage = () => {
                   <TableCell sx={{ width: '20%' }}>User</TableCell>
                   <TableCell sx={{ width: '25%' }}>Email</TableCell>
                   <TableCell>Role</TableCell>
-                  <TableCell>Company</TableCell>
+                  {/* <TableCell>Company</TableCell> */}
                   <TableCell>Status</TableCell>
                   <TableCell align="center">MFA</TableCell>
                   <TableCell
@@ -422,7 +432,7 @@ const UserManagementPage = () => {
                               size="small"
                             />
                           </TableCell>
-                          <TableCell>{safeUser.company || 'N/A'}</TableCell>
+                          {/* <TableCell>{safeUser.company || 'N/A'}</TableCell> */}
                           <TableCell>
                             <Chip
                               label={safeUser.is_active ? 'Active' : 'Inactive'}
@@ -585,6 +595,16 @@ const UserManagementPage = () => {
               onChange={handleInputChange}
             />
 
+            <TextField
+              fullWidth
+              label="Password"
+              name="password"
+              type="password"
+              value={currentUser.password}
+              onChange={handleInputChange}
+              required
+            />
+
             <FormControl fullWidth>
               <InputLabel>Role</InputLabel>
               <Select
@@ -601,13 +621,13 @@ const UserManagementPage = () => {
               </Select>
             </FormControl>
 
-            <TextField
-              fullWidth
-              label="Company/Organization"
-              name="company"
-              value={currentUser.company}
-              onChange={handleInputChange}
-            />
+            {/* <TextField
+               fullWidth
+               label="Company/Organization"
+               name="company"
+               value={currentUser.company}
+               onChange={handleInputChange}
+             /> */}
 
             <FormControlLabel
               control={

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -32,7 +32,9 @@ import {
   Step,
   StepLabel,
   Tabs,
-  Tab
+  Tab,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import {
   Assignment as ApplicationIcon,
@@ -46,10 +48,12 @@ import {
   Download as DownloadIcon
 } from '@mui/icons-material';
 import { loanService } from '../services/loanService';
+import applicationProgressService from '../services/applicationProgressService';
+import LoanStepContent from '../components/loan-steps/LoanStepContent';
 
 const TabPanel = ({ children, value, index }) => (
   <div hidden={value !== index}>
-    {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+    {value === index && <Box sx={{ p: { xs: 2, md: 3 } }}>{children}</Box>}
   </div>
 );
 
@@ -59,15 +63,21 @@ const LoanManagementPage = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [loans, setLoans] = useState([]);
-  const [filteredLoans, setFilteredLoans] = useState([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [activeStep, setActiveStep] = useState(0);
+  const [progress, setProgress] = useState(null);
+  const [loadingProgress, setLoadingProgress] = useState(false);
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
 
   const loanStatuses = [
     'submitted',
@@ -98,18 +108,38 @@ const LoanManagementPage = () => {
   ];
 
   useEffect(() => {
-    loadLoans();
-  }, []);
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
 
-  useEffect(() => {
-    filterLoans();
-  }, [loans, searchQuery, statusFilter, typeFilter]);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  const loadLoans = async () => {
+  const loadLoans = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await loanService.getAllLoans();
-      // Normalize response to an array. API may return { results: [...] } or { applications: [...] }
+      const params = {};
+      
+      if (tabValue === 1) {
+        params.tab = 'pending_review';
+      } else if (tabValue === 2) {
+        params.tab = 'approved';
+      } else if (tabValue === 3) {
+        params.tab = 'rejected';
+      }
+      
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (typeFilter !== 'all') {
+        params.loan_type = typeFilter;
+      }
+      if (debouncedSearchQuery.trim()) {
+        params.search = debouncedSearchQuery.trim();
+      }
+      
+      const data = await loanService.getAllLoans(params);
+      
       let loansArray = [];
       if (Array.isArray(data)) {
         loansArray = data;
@@ -120,7 +150,6 @@ const LoanManagementPage = () => {
       } else if (data && Array.isArray(data.loans)) {
         loansArray = data.loans;
       } else {
-        // If data is an object with keys like {applications, lenders, offers}, try to pick the first array-valued key
         for (const k of Object.keys(data || {})) {
           if (Array.isArray(data[k])) {
             loansArray = data[k];
@@ -135,38 +164,31 @@ const LoanManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tabValue, statusFilter, typeFilter, debouncedSearchQuery]);
 
-  const filterLoans = () => {
-    let filtered = loans;
-
-    if (searchQuery) {
-      filtered = filtered.filter(loan =>
-        loan.applicant_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        loan.applicant_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        loan.id.toString().includes(searchQuery)
-      );
-    }
-
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(loan => loan.status === statusFilter);
-    }
-
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(loan => loan.loan_type === typeFilter);
-    }
-
-    setFilteredLoans(filtered);
-  };
+  useEffect(() => {
+    loadLoans();
+  }, [loadLoans]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
   };
 
-  const handleViewLoan = (loan) => {
+  const handleViewLoan = async (loan) => {
     setSelectedLoan(loan);
-    setActiveStep(getCurrentStep(loan.status));
     setDialogOpen(true);
+    
+    try {
+      setLoadingProgress(true);
+      const progressData = await applicationProgressService.getProgress(loan.id);
+      setProgress(progressData);
+      setActiveStep(progressData.current_step);
+    } catch (err) {
+      console.error('Failed to load progress:', err);
+      setActiveStep(getCurrentStep(loan.status));
+    } finally {
+      setLoadingProgress(false);
+    }
   };
 
   const handleUpdateStatus = async (loanId, newStatus) => {
@@ -222,12 +244,14 @@ const LoanManagementPage = () => {
   };
 
   const getStatusLabel = (status) => {
+    if (!status) return 'Unknown';
     return status.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   };
 
   const getTypeLabel = (type) => {
+    if (!type) return 'Unknown';
     return type.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
@@ -244,23 +268,131 @@ const LoanManagementPage = () => {
     return new Date(dateString).toLocaleDateString();
   };
 
-  // Safe derived values to avoid rendering objects/arrays directly in JSX
-  const totalApplications = Array.isArray(filteredLoans) ? filteredLoans.length : 0;
-  const approvedCount = Array.isArray(filteredLoans) ? filteredLoans.filter(l => l.status === 'approved').length : 0;
-  const totalValue = Array.isArray(filteredLoans) ? filteredLoans.reduce((sum, loan) => sum + (loan?.amount || 0), 0) : 0;
+  const totalApplications = Array.isArray(loans) ? loans.length : 0;
+  const approvedCount = Array.isArray(loans) ? loans.filter(l => l.status === 'approved').length : 0;
+  const totalValue = Array.isArray(loans) ? loans.reduce((sum, loan) => {
+    const amount = parseFloat(loan?.loan_amount || loan?.amount || 0);
+    return sum + (isNaN(amount) ? 0 : amount);
+  }, 0) : 0;
   const approvalRate = totalApplications > 0 ? Math.round((approvedCount / totalApplications) * 100) : 0;
 
+  const renderTable = (data) => (
+    <>
+      <TableContainer>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>ID</TableCell>
+              <TableCell>Applicant</TableCell>
+              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Loan Type</TableCell>
+              <TableCell>Amount</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Created</TableCell>
+              <TableCell align="center">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {data.length > 0 ? (
+              data
+                .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                .map((loan) => (
+                  <TableRow key={loan.id}>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                      #{loan.id || loan.application_number}
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Avatar sx={{ width: 32, height: 32 }}>
+                          {(loan.applicant_name || 'U').charAt(0).toUpperCase()}
+                        </Avatar>
+                        <Box>
+                          <Typography variant="body2" noWrap sx={{ maxWidth: 120 }}>
+                            {loan.applicant_name || 'Unknown'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block', maxWidth: 120 }}>
+                            {loan.applicant_email || 'N/A'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                      <Chip
+                        label={getTypeLabel(loan.loan_type || loan.loan_purpose)}
+                        color="info"
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="medium">
+                        {formatCurrency(loan.loan_amount || loan.amount || 0)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={getStatusLabel(loan.status)}
+                        color={getStatusColor(loan.status)}
+                        size="small"
+                        sx={{ maxWidth: { xs: 80, sm: 'auto' } }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                      {formatDate(loan.created_at)}
+                    </TableCell>
+                    <TableCell align="center">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleViewLoan(loan)}
+                        color="primary"
+                      >
+                        <ViewIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
+                    No applications found
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <TablePagination
+        rowsPerPageOptions={[5, 10, 25, 50]}
+        component="div"
+        count={data.length}
+        rowsPerPage={rowsPerPage}
+        page={page}
+        onPageChange={(event, newPage) => setPage(newPage)}
+        onRowsPerPageChange={(event) => {
+          setRowsPerPage(parseInt(event.target.value, 10));
+          setPage(0);
+        }}
+      />
+    </>
+  );
+
   return (
-    <Container maxWidth="lg" sx={{ py: 3 }}>
+    <Container maxWidth="xl" sx={{ py: { xs: 2, md: 3 } }}>
       <Paper elevation={3}>
-        {/* Header */}
-        <Box sx={{ p: 4, borderBottom: 1, borderColor: 'divider' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Box sx={{ p: { xs: 2, md: 4 }, borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: { xs: 'column', sm: 'row' }, 
+            justifyContent: 'space-between', 
+            alignItems: { xs: 'flex-start', sm: 'center' }, 
+            gap: 2,
+            mb: 3 
+          }}>
             <Box>
-              <Typography variant="h4" gutterBottom>
+              <Typography variant="h4" gutterBottom sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}>
                 Loan Management
               </Typography>
-              <Typography variant="body1" color="text.secondary">
+              <Typography variant="body1" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>
                 Manage loan applications, review process, and approval workflow
               </Typography>
             </Box>
@@ -268,17 +400,17 @@ const LoanManagementPage = () => {
               variant="contained"
               startIcon={<DownloadIcon />}
               onClick={() => window.open('/api/loans/export', '_blank')}
+              fullWidth={isMobile}
             >
               Export Data
             </Button>
           </Box>
 
-          {/* Search and Filters */}
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={4}>
+            <Grid item xs={12} sm={6} md={4}>
               <TextField
                 fullWidth
-                placeholder="Search loans..."
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 InputProps={{
@@ -287,7 +419,7 @@ const LoanManagementPage = () => {
                 size="small"
               />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Status</InputLabel>
                 <Select
@@ -304,7 +436,7 @@ const LoanManagementPage = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Loan Type</InputLabel>
                 <Select
@@ -321,7 +453,7 @@ const LoanManagementPage = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} md={2}>
+            <Grid item xs={12} sm={6} md={2}>
               <Button
                 fullWidth
                 variant="outlined"
@@ -338,121 +470,43 @@ const LoanManagementPage = () => {
           </Grid>
         </Box>
 
-        {error && <Alert severity="error">{error}</Alert>}
-        {success && <Alert severity="success">{success}</Alert>}
+        {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
+        {success && <Alert severity="success" sx={{ m: 2 }}>{success}</Alert>}
 
-        <Tabs
-          value={tabValue}
-          onChange={handleTabChange}
-          variant="scrollable"
-          scrollButtons="auto"
-        >
-          <Tab label="All Applications" icon={<ApplicationIcon />} />
-          <Tab label="Pending Review" icon={<PendingIcon />} />
-          <Tab label="Approved" icon={<ApproveIcon />} />
-          <Tab label="Rejected" icon={<RejectIcon />} />
-        </Tabs>
+        <Box sx={{ width: '100%', overflowX: 'auto' }}>
+          <Tabs
+            value={tabValue}
+            onChange={handleTabChange}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+          >
+            <Tab label="All" icon={<ApplicationIcon />} iconPosition="start" />
+            <Tab label="Pending" icon={<PendingIcon />} iconPosition="start" />
+            <Tab label="Approved" icon={<ApproveIcon />} iconPosition="start" />
+            <Tab label="Rejected" icon={<RejectIcon />} iconPosition="start" />
+          </Tabs>
+        </Box>
 
-        {/* All Applications Tab */}
         <TabPanel value={tabValue} index={0}>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>ID</TableCell>
-                  <TableCell>Applicant</TableCell>
-                  <TableCell>Loan Type</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Created</TableCell>
-                  <TableCell align="center">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(filteredLoans || [])
-                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                  .map((loan) => (
-                    <TableRow key={loan.id}>
-                      <TableCell>#{loan.id}</TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <Avatar sx={{ width: 32, height: 32 }}>
-                            {loan.applicant_name.charAt(0).toUpperCase()}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2">{loan.applicant_name}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {loan.applicant_email}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={getTypeLabel(loan.loan_type)}
-                          color="info"
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight="medium">
-                          {formatCurrency(loan.amount)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={getStatusLabel(loan.status)}
-                          color={getStatusColor(loan.status)}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {formatDate(loan.created_at)}
-                      </TableCell>
-                      <TableCell align="center">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleViewLoan(loan)}
-                          color="primary"
-                        >
-                          <ViewIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-
-          <TablePagination
-            rowsPerPageOptions={[5, 10, 25, 50]}
-            component="div"
-            count={filteredLoans.length}
-            rowsPerPage={rowsPerPage}
-            page={page}
-            onPageChange={(event, newPage) => setPage(newPage)}
-            onRowsPerPageChange={(event) => {
-              setRowsPerPage(parseInt(event.target.value, 10));
-              setPage(0);
-            }}
-          />
+          {renderTable(loans)}
         </TabPanel>
 
-        {/* Other tabs would show filtered content */}
-        {[1, 2, 3].map((index) => (
-          <TabPanel key={index} value={tabValue} index={index}>
-            <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-              {index === 1 && 'Pending review applications will be displayed here'}
-              {index === 2 && 'Approved applications will be displayed here'}
-              {index === 3 && 'Rejected applications will be displayed here'}
-            </Typography>
-          </TabPanel>
-        ))}
+        <TabPanel value={tabValue} index={1}>
+          {renderTable(loans)}
+        </TabPanel>
 
-        {/* Statistics */}
+        <TabPanel value={tabValue} index={2}>
+          {renderTable(loans)}
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={3}>
+          {renderTable(loans)}
+        </TabPanel>
+
         <Box sx={{ p: 3, borderTop: 1, borderColor: 'divider' }}>
           <Grid container spacing={3}>
-            <Grid item xs={12} sm={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <Card elevation={0} sx={{ bgcolor: 'grey.50' }}>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <Typography variant="h5" color="primary">
@@ -464,7 +518,7 @@ const LoanManagementPage = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={12} sm={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <Card elevation={0} sx={{ bgcolor: 'grey.50' }}>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <Typography variant="h5" color="success.main">
@@ -476,7 +530,7 @@ const LoanManagementPage = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={12} sm={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <Card elevation={0} sx={{ bgcolor: 'grey.50' }}>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <Typography variant="h5" color="warning.main">
@@ -488,7 +542,7 @@ const LoanManagementPage = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={12} sm={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <Card elevation={0} sx={{ bgcolor: 'grey.50' }}>
                 <CardContent sx={{ textAlign: 'center' }}>
                   <Typography variant="h5" color="info.main">
@@ -504,9 +558,14 @@ const LoanManagementPage = () => {
         </Box>
       </Paper>
 
-      {/* Loan Details Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
+      <Dialog 
+        open={dialogOpen} 
+        onClose={() => setDialogOpen(false)} 
+        maxWidth="md" 
+        fullWidth
+        fullScreen={isMobile}
+      >
+        <DialogTitle sx={{ pr: 6 }}>
           Loan Application Details
           <IconButton
             onClick={() => setDialogOpen(false)}
@@ -515,24 +574,99 @@ const LoanManagementPage = () => {
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent dividers>
           {selectedLoan && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {/* Application Progress */}
               <Box sx={{ mb: 3 }}>
                 <Typography variant="h6" gutterBottom>
                   Application Progress
                 </Typography>
-                <Stepper activeStep={activeStep} alternativeLabel>
-                  {steps.map((label) => (
-                    <Step key={label}>
-                      <StepLabel>{label}</StepLabel>
-                    </Step>
-                  ))}
-                </Stepper>
+                <Box sx={{ overflowX: 'auto', pb: 1 }}>
+                  <Stepper activeStep={activeStep} alternativeLabel sx={{ minWidth: isMobile ? '600px' : 'auto' }}>
+                    {steps.map((label, index) => (
+                      <Step key={label}>
+                        <StepLabel
+                          StepIconProps={{
+                            sx: {
+                              color: index <= activeStep ? 'primary.main' : 'grey.400',
+                              '&.Mui-active': {
+                                color: 'primary.main',
+                              },
+                              '&.Mui-completed': {
+                                color: 'success.main',
+                              },
+                            }
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontWeight: index === activeStep ? 600 : 400,
+                              color: index <= activeStep ? 'text.primary' : 'text.secondary'
+                            }}
+                          >
+                            {label}
+                          </Typography>
+                        </StepLabel>
+                      </Step>
+                    ))}
+                  </Stepper>
+                </Box>
+
+                <Box sx={{ mt: 4, p: { xs: 2, md: 3 }, bgcolor: 'grey.50', borderRadius: 2 }}>
+                  <LoanStepContent
+                    activeStep={activeStep}
+                    loan={selectedLoan}
+                    formatDate={formatDate}
+                    formatCurrency={formatCurrency}
+                    onUpdateStatus={handleUpdateStatus}
+                  />
+                </Box>
+
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: { xs: 'column-reverse', sm: 'row' },
+                  justifyContent: 'space-between', 
+                  gap: 2,
+                  mt: 3 
+                }}>
+                  <Button
+                    disabled={activeStep === 0}
+                    fullWidth={isMobile}
+                    variant="outlined"
+                    onClick={async () => {
+                      const newStep = activeStep - 1;
+                      setActiveStep(newStep);
+                      try {
+                        await applicationProgressService.setCurrentStep(selectedLoan.id, newStep);
+                      } catch (err) {
+                        console.error('Failed to update step:', err);
+                      }
+                    }}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    variant="contained"
+                    fullWidth={isMobile}
+                    disabled={activeStep === steps.length - 1}
+                    onClick={async () => {
+                      const newStep = activeStep + 1;
+                      setActiveStep(newStep);
+                      try {
+                        await applicationProgressService.setCurrentStep(selectedLoan.id, newStep);
+                        const progressData = await applicationProgressService.getProgress(selectedLoan.id);
+                        setProgress(progressData);
+                      } catch (err) {
+                        console.error('Failed to update step:', err);
+                      }
+                    }}
+                  >
+                    Next Step
+                  </Button>
+                </Box>
               </Box>
 
-              {/* Loan Information */}
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
                   <Card elevation={1}>
@@ -543,25 +677,25 @@ const LoanManagementPage = () => {
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Loan ID</Typography>
-                          <Typography variant="body2">#{selectedLoan.id}</Typography>
+                          <Typography variant="body2">#{selectedLoan.id || selectedLoan.application_number}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Type</Typography>
-                          <Typography variant="body2">{getTypeLabel(selectedLoan.loan_type)}</Typography>
+                          <Typography variant="body2">{getTypeLabel(selectedLoan.loan_type || selectedLoan.loan_purpose)}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Amount</Typography>
                           <Typography variant="body2" fontWeight="medium">
-                            {formatCurrency(selectedLoan.amount)}
+                            {formatCurrency(selectedLoan.loan_amount || selectedLoan.amount || 0)}
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Interest Rate</Typography>
-                          <Typography variant="body2">{selectedLoan.interest_rate}%</Typography>
+                          <Typography variant="body2">{selectedLoan.interest_rate || 'N/A'}%</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Term</Typography>
-                          <Typography variant="body2">{selectedLoan.term_months} months</Typography>
+                          <Typography variant="body2">{selectedLoan.loan_term || selectedLoan.term_months || 'N/A'} months</Typography>
                         </Box>
                       </Box>
                     </CardContent>
@@ -577,24 +711,24 @@ const LoanManagementPage = () => {
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Name</Typography>
-                          <Typography variant="body2">{selectedLoan.applicant_name}</Typography>
+                          <Typography variant="body2">{selectedLoan.applicant_name || 'Unknown'}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Email</Typography>
-                          <Typography variant="body2">{selectedLoan.applicant_email}</Typography>
+                          <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>{selectedLoan.applicant_email || 'N/A'}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Phone</Typography>
-                          <Typography variant="body2">{selectedLoan.applicant_phone}</Typography>
+                          <Typography variant="body2">{selectedLoan.applicant_phone || 'N/A'}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Credit Score</Typography>
-                          <Typography variant="body2">{selectedLoan.credit_score}</Typography>
+                          <Typography variant="body2">{selectedLoan.credit_score || 'N/A'}</Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="body2" color="text.secondary">Income</Typography>
                           <Typography variant="body2">
-                            {formatCurrency(selectedLoan.annual_income)}/year
+                            {selectedLoan.annual_income ? formatCurrency(selectedLoan.annual_income) + '/year' : 'N/A'}
                           </Typography>
                         </Box>
                       </Box>
@@ -603,13 +737,19 @@ const LoanManagementPage = () => {
                 </Grid>
               </Grid>
 
-              {/* Status Actions */}
-              <Box sx={{ mt: 3, display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+              <Box sx={{ 
+                mt: 3, 
+                display: 'flex', 
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: 2, 
+                justifyContent: 'flex-end' 
+              }}>
                 {selectedLoan.status === 'under_review' && (
                   <>
                     <Button
                       variant="contained"
                       color="success"
+                      fullWidth={isMobile}
                       onClick={() => handleUpdateStatus(selectedLoan.id, 'approved')}
                     >
                       Approve
@@ -617,6 +757,7 @@ const LoanManagementPage = () => {
                     <Button
                       variant="contained"
                       color="error"
+                      fullWidth={isMobile}
                       onClick={() => handleUpdateStatus(selectedLoan.id, 'rejected')}
                     >
                       Reject
@@ -626,6 +767,7 @@ const LoanManagementPage = () => {
                 {selectedLoan.status === 'submitted' && (
                   <Button
                     variant="contained"
+                    fullWidth={isMobile}
                     onClick={() => handleUpdateStatus(selectedLoan.id, 'under_review')}
                   >
                     Start Review
@@ -634,6 +776,7 @@ const LoanManagementPage = () => {
                 {selectedLoan.status === 'approved' && (
                   <Button
                     variant="contained"
+                    fullWidth={isMobile}
                     onClick={() => handleUpdateStatus(selectedLoan.id, 'funded')}
                   >
                     Mark as Funded
