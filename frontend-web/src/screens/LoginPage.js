@@ -12,7 +12,7 @@ import {
   Divider,
 } from '@mui/material';
 import { AuthContext } from '../contexts/AuthContext';
-import { ROUTES } from '../utils/constants';
+import { ROUTES, API_BASE_URL } from '../utils/constants';
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
@@ -21,6 +21,8 @@ const LoginPage = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaToken, setMfaToken] = useState('');
 
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -40,9 +42,48 @@ const LoginPage = () => {
     try {
       const result = await login(formData.email, formData.password);
       if (result.success) {
-        navigate(ROUTES.HOME);
+        // Check if MFA is required
+        if (result.mfa_required) {
+          setMfaRequired(true);
+        } else {
+          navigate(ROUTES.HOME);
+        }
       } else {
         setError(result.error || 'Login failed');
+      }
+    } catch (error) {
+      setError('An unexpected error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMfaSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/mfa/verify-login/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          token: mfaToken
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        localStorage.setItem('authToken', data.data.token);
+        localStorage.setItem('user', JSON.stringify(data.data.user));
+        
+        window.location.href = ROUTES.HOME;
+      } else {
+        setError(data.error || 'Invalid verification code');
       }
     } catch (error) {
       setError('An unexpected error occurred');
@@ -134,54 +175,112 @@ const LoginPage = () => {
                 </Alert>
               )}
 
-              <Box component="form" onSubmit={handleSubmit} noValidate>
-                <TextField
-                  margin="normal"
-                  required
-                  fullWidth
-                  id="email"
-                  label="Email Address"
-                  name="email"
-                  autoComplete="email"
-                  autoFocus
-                  value={formData.email}
-                  onChange={handleChange}
-                  sx={{ mb: 2 }}
-                />
-                <TextField
-                  margin="normal"
-                  required
-                  fullWidth
-                  name="password"
-                  label="Password"
-                  type="password"
-                  id="password"
-                  autoComplete="current-password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  sx={{ mb: 3 }}
-                />
-                <Button
-                  type="submit"
-                  fullWidth
-                  variant="contained"
-                  disabled={loading}
-                  sx={{
-                    py: 1.5,
-                    mb: 2,
-                    backgroundColor: '#6200EE',
-                    '&:hover': {
-                      backgroundColor: '#3700B3',
-                    },
-                  }}
-                >
-                  {loading ? (
-                    <CircularProgress size={24} sx={{ color: 'white' }} />
-                  ) : (
-                    'Sign In'
-                  )}
-                </Button>
-              </Box>
+              {mfaRequired && (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  Please enter the 6-digit code from your authenticator app
+                </Alert>
+              )}
+
+              {!mfaRequired ? (
+                <Box component="form" onSubmit={handleSubmit} noValidate>
+                  <TextField
+                    margin="normal"
+                    required
+                    fullWidth
+                    id="email"
+                    label="Email Address"
+                    name="email"
+                    autoComplete="email"
+                    autoFocus
+                    value={formData.email}
+                    onChange={handleChange}
+                    sx={{ mb: 2 }}
+                  />
+                  <TextField
+                    margin="normal"
+                    required
+                    fullWidth
+                    name="password"
+                    label="Password"
+                    type="password"
+                    id="password"
+                    autoComplete="current-password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    sx={{ mb: 3 }}
+                  />
+                  <Button
+                    type="submit"
+                    fullWidth
+                    variant="contained"
+                    disabled={loading}
+                    sx={{
+                      py: 1.5,
+                      mb: 2,
+                      backgroundColor: '#6200EE',
+                      '&:hover': {
+                        backgroundColor: '#3700B3',
+                      },
+                    }}
+                  >
+                    {loading ? (
+                      <CircularProgress size={24} sx={{ color: 'white' }} />
+                    ) : (
+                      'Sign In'
+                    )}
+                  </Button>
+                </Box>
+              ) : (
+                <Box component="form" onSubmit={handleMfaSubmit} noValidate>
+                  <TextField
+                    margin="normal"
+                    required
+                    fullWidth
+                    id="mfa-token"
+                    label="2FA Verification Code"
+                    name="mfaToken"
+                    autoComplete="off"
+                    autoFocus
+                    value={mfaToken}
+                    onChange={(e) => setMfaToken(e.target.value)}
+                    placeholder="000000"
+                    inputProps={{ maxLength: 6 }}
+                    sx={{ mb: 3 }}
+                  />
+                  <Button
+                    type="submit"
+                    fullWidth
+                    variant="contained"
+                    disabled={loading || !mfaToken}
+                    sx={{
+                      py: 1.5,
+                      mb: 2,
+                      backgroundColor: '#6200EE',
+                      '&:hover': {
+                        backgroundColor: '#3700B3',
+                      },
+                    }}
+                  >
+                    {loading ? (
+                      <CircularProgress size={24} sx={{ color: 'white' }} />
+                    ) : (
+                      'Verify'
+                    )}
+                  </Button>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={() => {
+                      setMfaRequired(false);
+                      setMfaToken('');
+                      setError('');
+                    }}
+                    sx={{ mb: 2 }}
+                  >
+                    Back to Login
+                  </Button>
+                </Box>
+              )}
 
               <Box sx={{ textAlign: 'center', mt: 2 }}>
                 <Link to="/forgot-password" style={{ textDecoration: 'none' }}>

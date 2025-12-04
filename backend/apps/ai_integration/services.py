@@ -145,13 +145,14 @@ class AIChatService:
                 ai_response = response_message.content
             
             # Save AI message
-            Message.objects.create(
+            ai_msg = Message.objects.create(
                 conversation=conversation,
-                sender='assistant',
+                sender='ai',
                 content=ai_response
             )
             
-            logger.info(f"Successfully processed message for conversation {conversation.id}")
+            message_count = conversation.messages.count()
+            logger.info(f"Successfully processed message for conversation {conversation.id}. Total messages: {message_count}, AI message saved: {ai_msg.id}")
             return ai_response
             
         except Exception as e:

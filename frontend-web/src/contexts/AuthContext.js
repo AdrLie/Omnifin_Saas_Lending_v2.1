@@ -30,6 +30,16 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const response = await authService.login(email, password);
+      
+      // Check if MFA is required
+      if (response.data.mfa_required) {
+        return { 
+          success: true, 
+          mfa_required: true,
+          email: response.data.email 
+        };
+      }
+      
       const { user, token } = response.data.data;
 
       setUser(user);

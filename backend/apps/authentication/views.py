@@ -74,6 +74,16 @@ class UserLoginView(generics.GenericAPIView):
         # 2. Success Logic
         user = serializer.validated_data['user']
         
+        # Check if MFA is enabled
+        if user.mfa_enabled and user.mfa_secret:
+            # Return response indicating MFA is required
+            return Response({
+                'success': True,
+                'mfa_required': True,
+                'message': 'MFA verification required',
+                'email': user.email
+            }, status=status.HTTP_200_OK)
+        
         # Create or get token
         token, created = Token.objects.get_or_create(user=user)
         
@@ -352,10 +362,191 @@ def password_reset_confirm(request):
     return Response({'message': 'Password reset successful'})
 
 
+# Two-Factor Authentication views
+import pyotp
+import qrcode
+import io
+import base64
+from django.http import HttpResponse
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def enable_mfa(request):
+    """Enable MFA for the current user"""
+    user = request.user
+    
+    if user.mfa_enabled:
+        return Response({'error': 'MFA is already enabled'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Generate a secret key for the user
+    secret = pyotp.random_base32()
+    user.mfa_secret = secret
+    user.save()
+    
+    # Generate provisioning URI for QR code
+    totp = pyotp.TOTP(secret)
+    provisioning_uri = totp.provisioning_uri(
+        name=user.email,
+        issuer_name='Omnifin Platform'
+    )
+    
+    # Generate QR code
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+    
+    # Convert to base64 for frontend display
+    img_base64 = base64.b64encode(buffer.getvalue()).decode()
+    
+    return Response({
+        'secret': secret,
+        'qr_code': f'data:image/png;base64,{img_base64}',
+        'provisioning_uri': provisioning_uri
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def verify_mfa_setup(request):
+    """Verify MFA setup with TOTP code"""
+    user = request.user
+    token = request.data.get('token')
+    
+    if not token:
+        return Response({'error': 'Token is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not user.mfa_secret:
+        return Response({'error': 'MFA setup not initiated'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Verify the token
+    totp = pyotp.TOTP(user.mfa_secret)
+    if totp.verify(token, valid_window=1):
+        user.mfa_enabled = True
+        user.save()
+        
+        # Log activity
+        from apps.authentication.activity_utils import log_activity
+        log_activity(
+            user=user,
+            activity_type='settings_change',
+            description='Two-factor authentication enabled',
+            metadata={'mfa_enabled': True},
+            request=request
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'MFA enabled successfully'
+        })
+    else:
+        return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def disable_mfa(request):
+    """Disable MFA for the current user"""
+    user = request.user
+    password = request.data.get('password')
+    token = request.data.get('token')
+    
+    if not password:
+        return Response({'error': 'Password is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Verify password
+    if not user.check_password(password):
+        return Response({'error': 'Invalid password'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # If MFA is enabled, verify token
+    if user.mfa_enabled and user.mfa_secret:
+        if not token:
+            return Response({'error': 'MFA token is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        totp = pyotp.TOTP(user.mfa_secret)
+        if not totp.verify(token, valid_window=1):
+            return Response({'error': 'Invalid MFA token'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    user.mfa_enabled = False
+    user.mfa_secret = None
+    user.save()
+    
+    # Log activity
+    from apps.authentication.activity_utils import log_activity
+    log_activity(
+        user=user,
+        activity_type='settings_change',
+        description='Two-factor authentication disabled',
+        metadata={'mfa_enabled': False},
+        request=request
+    )
+    
+    return Response({
+        'success': True,
+        'message': 'MFA disabled successfully'
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def verify_mfa_login(request):
+    """Verify MFA token during login"""
+    email = request.data.get('email')
+    token = request.data.get('token')
+    
+    if not email or not token:
+        return Response({'error': 'Email and token are required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if not user.mfa_enabled or not user.mfa_secret:
+        return Response({'error': 'MFA is not enabled for this user'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Verify the token
+    totp = pyotp.TOTP(user.mfa_secret)
+    if totp.verify(token, valid_window=1):
+        # Create or get token
+        auth_token, created = Token.objects.get_or_create(user=user)
+        
+        # Update last login
+        user.last_login = timezone.now()
+        user.save()
+        
+        # Log activity
+        from apps.authentication.activity_utils import log_activity
+        log_activity(
+            user=user,
+            activity_type='login',
+            description=f'{user.get_full_name() or user.email} logged in with MFA',
+            metadata={'login_method': 'email', 'mfa_verified': True},
+            request=request
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Login Successful',
+            'data': {
+                'user': UserSerializer(user).data,
+                'token': auth_token.key
+            }
+        }, status=status.HTTP_200_OK)
+    else:
+        return Response({'error': 'Invalid MFA token'}, status=status.HTTP_400_BAD_REQUEST)
+
+
 # Activity tracking views
 from rest_framework import viewsets, filters
 from apps.authentication.models import UserActivity
 from apps.authentication.activity_serializers import UserActivitySerializer, CreateActivitySerializer
+from apps.authentication.pagination import CustomPageNumberPagination
 from django.db.models import Q
 
 
@@ -363,6 +554,7 @@ class UserActivityViewSet(viewsets.ModelViewSet):
     """ViewSet for user activities"""
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserActivitySerializer
+    pagination_class = CustomPageNumberPagination
     filter_backends = [filters.OrderingFilter, filters.SearchFilter]
     ordering_fields = ['created_at']
     ordering = ['-created_at']

@@ -38,8 +38,7 @@ import {
   LockOpen as UnlockIcon,
   Email as EmailIcon,
   Search as SearchIcon,
-  Close as CloseIcon,
-  Shield as AdminIcon
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
 
@@ -64,7 +63,6 @@ const UserManagementPage = () => {
     role: 'applicant',
     company: '',
     is_active: true,
-    mfa_enabled: false,
     password: '',
     password_confirm: '',
   });
@@ -144,8 +142,7 @@ const UserManagementPage = () => {
         phone: '',
         role: 'applicant',
         company: '',
-        is_active: true,
-        mfa_enabled: false
+        is_active: true
       });
     }
     setDialogOpen(true);
@@ -161,8 +158,7 @@ const UserManagementPage = () => {
       phone: '',
       role: 'applicant',
       company: '',
-      is_active: true,
-      mfa_enabled: false
+      is_active: true
     });
   };
 
@@ -386,7 +382,6 @@ const UserManagementPage = () => {
                   <TableCell>Role</TableCell>
                   {/* <TableCell>Company</TableCell> */}
                   <TableCell>Status</TableCell>
-                  <TableCell align="center">MFA</TableCell>
                   <TableCell
                     align="center"
                     sx={{
@@ -440,13 +435,6 @@ const UserManagementPage = () => {
                               size="small"
                             />
                           </TableCell>
-                          <TableCell align="center">
-                            {safeUser.mfa_enabled ? (
-                              <AdminIcon color="success" />
-                            ) : (
-                              <AdminIcon color="disabled" />
-                            )}
-                          </TableCell>
                           <TableCell align="center" sx={{ position: 'sticky', right: 0, bgcolor: 'background.paper', zIndex: 1 }}>
                             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
                               <IconButton
@@ -483,7 +471,7 @@ const UserManagementPage = () => {
                     })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={7} align="center">No users found</TableCell>
+                    <TableCell colSpan={6} align="center">No users found</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -637,16 +625,6 @@ const UserManagementPage = () => {
                 />
               }
               label="Active"
-            />
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={currentUser.mfa_enabled}
-                  onChange={handleSwitchChange('mfa_enabled')}
-                />
-              }
-              label="Two-Factor Authentication"
             />
           </Box>
         </DialogContent>

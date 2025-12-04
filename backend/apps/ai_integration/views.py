@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
+from django.db.models import Count
 from apps.ai_integration.models import Prompt, Knowledge, Conversation, Message
 from django.db import transaction
 from apps.ai_integration.serializers import (
@@ -334,6 +335,157 @@ def get_conversation_history(request, session_id):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
+def get_user_conversations(request):
+    """Get all conversations for the authenticated user"""
+    try:
+        user = request.user
+        
+        # Get query parameters for filtering
+        status_filter = request.query_params.get('status')  # active, completed, abandoned
+        is_voice = request.query_params.get('is_voice')  # true, false
+        exclude_empty = request.query_params.get('exclude_empty', 'true').lower() == 'true'  # exclude conversations with no messages
+        limit = int(request.query_params.get('limit', 50))
+        offset = int(request.query_params.get('offset', 0))
+        
+        # Base queryset
+        if user.is_superadmin or user.is_admin:
+            conversations = Conversation.objects.all()
+        else:
+            conversations = Conversation.objects.filter(user=user)
+        
+        # Apply filters
+        if status_filter:
+            conversations = conversations.filter(status=status_filter)
+        
+        if is_voice is not None:
+            is_voice_bool = is_voice.lower() == 'true'
+            conversations = conversations.filter(is_voice_chat=is_voice_bool)
+        
+        # Exclude empty conversations by default
+        if exclude_empty:
+            conversations = conversations.annotate(msg_count=Count('messages')).filter(msg_count__gt=0)
+        
+        # Order by most recent first
+        conversations = conversations.order_by('-started_at')
+        
+        # Get total count
+        total_count = conversations.count()
+        
+        # Apply pagination
+        conversations = conversations[offset:offset + limit]
+        
+        # Serialize with message count
+        conversations_data = []
+        for conv in conversations:
+            message_count = conv.messages.count()
+            last_message = conv.messages.order_by('-created_at').first()
+            
+            conversations_data.append({
+                'id': str(conv.id),
+                'session_id': conv.session_id,
+                'status': conv.status,
+                'is_voice_chat': conv.is_voice_chat,
+                'started_at': conv.started_at,
+                'ended_at': conv.ended_at,
+                'message_count': message_count,
+                'last_message': {
+                    'content': last_message.content[:100] + '...' if last_message and len(last_message.content) > 100 else last_message.content if last_message else None,
+                    'created_at': last_message.created_at if last_message else None,
+                    'sender': last_message.sender if last_message else None
+                } if last_message else None,
+                'application_id': str(conv.application_id) if conv.application_id else None,
+                'metadata': conv.metadata
+            })
+        
+        return Response({
+            'conversations': conversations_data,
+            'total_count': total_count,
+            'limit': limit,
+            'offset': offset
+        })
+    
+    except Exception as e:
+        logger.error(f"Get user conversations error: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': 'Failed to retrieve conversations'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_conversation_messages(request, conversation_id):
+    """Get all messages for a specific conversation"""
+    try:
+        user = request.user
+        
+        # Get conversation and verify ownership
+        if user.is_superadmin or user.is_admin:
+            conversation = get_object_or_404(Conversation, id=conversation_id)
+        else:
+            conversation = get_object_or_404(Conversation, id=conversation_id, user=user)
+        
+        # Get all messages ordered by creation time
+        messages = conversation.messages.order_by('created_at')
+        
+        serializer = MessageSerializer(messages, many=True)
+        
+        return Response({
+            'conversation': ConversationSerializer(conversation).data,
+            'messages': serializer.data
+        })
+    
+    except Conversation.DoesNotExist:
+        return Response(
+            {'error': 'Conversation not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    except Exception as e:
+        logger.error(f"Get conversation messages error: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': 'Failed to retrieve messages'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_conversation(request, conversation_id):
+    """Delete a conversation and all its messages"""
+    try:
+        user = request.user
+        
+        # Get conversation and verify ownership
+        if user.is_superadmin or user.is_admin:
+            conversation = get_object_or_404(Conversation, id=conversation_id)
+        else:
+            conversation = get_object_or_404(Conversation, id=conversation_id, user=user)
+        
+        # Delete conversation (messages will cascade delete)
+        conversation.delete()
+        
+        return Response(
+            {'message': 'Conversation deleted successfully'},
+            status=status.HTTP_200_OK
+        )
+    
+    except Conversation.DoesNotExist:
+        return Response(
+            {'error': 'Conversation not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    except Exception as e:
+        logger.error(f"Delete conversation error: {str(e)}\n{traceback.format_exc()}")
+        return Response(
+            {'error': 'Failed to delete conversation'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def ai_dashboard(request):
     """Get AI dashboard data"""
     try:
@@ -358,7 +510,7 @@ def ai_dashboard(request):
         # Get message statistics
         total_messages = messages.count()
         user_messages = messages.filter(sender='user').count()
-        ai_messages = messages.filter(sender='assistant').count()
+        ai_messages = messages.filter(sender='ai').count()
         
         # Get voice vs text statistics
         voice_conversations = conversations.filter(is_voice_chat=True).count()
