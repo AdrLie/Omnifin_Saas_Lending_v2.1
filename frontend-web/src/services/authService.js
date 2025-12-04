@@ -41,13 +41,13 @@ api.interceptors.request.use(
     if (csrfToken) {
       config.headers['X-CSRFToken'] = csrfToken;
     }
-    
+
     // Add auth token if available
     const token = await localStorage.getItem('authToken');
     if (token) {
       config.headers['Authorization'] = `Token ${token}`;
     }
-    
+
     return config;
   },
   (error) => {
@@ -59,7 +59,7 @@ export const authService = {
   login: async (email, password) => {
     // First, get CSRF token by making a GET request
     await api.get('/csrf/'); // You need to create this endpoint
-    
+
     // Then make the login request
     const response = await api.post('/auth/login/', {
       email,
@@ -80,13 +80,23 @@ export const authService = {
   },
 
   updateProfile: async (profileData) => {
-      // Axios interceptor already adds the Authorization header
-      const response = await api.put('/auth/profile/', profileData);
-      return response;
-    },
-  
+    // Axios interceptor already adds the Authorization header
+    const response = await api.put('/auth/profile/', profileData);
+    return response;
+  },
+
   getAllUsers: async () => {
-      const response = await api.get('/auth/users/');
-      return response;
-    }
+    const response = await api.get('/auth/users/');
+    return response;
+  },
+
+  getApplicantProfile: async () => {
+    const response = await api.get('/auth/profile/applicant/');
+    return response;
+  },
+
+  updateApplicantProfile: async (profileData) => {
+    const response = await api.put('/auth/profile/applicant/', profileData);
+    return response;
+  }
 };

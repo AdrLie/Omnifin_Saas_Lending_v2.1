@@ -39,7 +39,7 @@ export const loanService = {
   // Get all loans
   getAllLoans: async (params = {}) => {
     try {
-      const response = await api.get('', { params });
+      const response = await api.get('/applications/', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching loans:', error);
@@ -50,7 +50,7 @@ export const loanService = {
   // Get loan by ID
   getLoanById: async (id) => {
     try {
-      const response = await api.get(`${id}/`);
+      const response = await api.get(`applications/${id}/`);
       return response.data;
     } catch (error) {
       console.error('Error fetching loan:', error);
@@ -61,7 +61,7 @@ export const loanService = {
   // Create new loan application
   createLoan: async (loanData) => {
     try {
-      const response = await api.post('', loanData);
+      const response = await api.post('applications/apply/', loanData);
       return response.data;
     } catch (error) {
       console.error('Error creating loan:', error);
@@ -72,7 +72,7 @@ export const loanService = {
   // Update loan
   updateLoan: async (id, loanData) => {
     try {
-      const response = await api.patch(`${id}/`, loanData);
+      const response = await api.patch(`applications/${id}/`, loanData);
       return response.data;
     } catch (error) {
       console.error('Error updating loan:', error);
@@ -83,7 +83,7 @@ export const loanService = {
   // Update loan status
   updateLoanStatus: async (id, status) => {
     try {
-      const response = await api.patch(`${id}/status/`, {
+      const response = await api.post(`applications/${id}/update_status/`, {
         status: status
       });
       return response.data;
@@ -96,7 +96,7 @@ export const loanService = {
   // Delete loan
   deleteLoan: async (id) => {
     try {
-      const response = await api.delete(`${id}/`);
+      const response = await api.delete(`applications/${id}/`);
       return response.data;
     } catch (error) {
       console.error('Error deleting loan:', error);
@@ -107,7 +107,7 @@ export const loanService = {
   // Add review note
   addReviewNote: async (id, note) => {
     try {
-      const response = await api.post(`${id}/notes/`, {
+      const response = await api.post(`applications/${id}/notes/`, {
         note: note
       });
       return response.data;
@@ -124,8 +124,8 @@ export const loanService = {
       formData.append('file', file);
       formData.append('document_type', documentType);
       formData.append('loan', loanId);
-      
-      const response = await api.post('documents/', formData, {
+
+      const response = await api.post('applications/documents/', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -140,7 +140,7 @@ export const loanService = {
   // Get loan documents
   getLoanDocuments: async (loanId) => {
     try {
-      const response = await api.get(`${loanId}/documents/`);
+      const response = await api.get(`applications/${loanId}/documents/`);
       return response.data;
     } catch (error) {
       console.error('Error fetching loan documents:', error);

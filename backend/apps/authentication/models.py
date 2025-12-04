@@ -66,6 +66,15 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return f"{self.email} ({self.role})"
 
+    def get_full_name(self):
+        """Returns the first_name plus the last_name, with a space in between."""
+        full_name = f"{self.first_name} {self.last_name}".strip()
+        return full_name or self.email
+
+    def get_short_name(self):
+        """Returns the short name for the user."""
+        return self.first_name or self.email
+
     @property
     def is_tpb(self):
         return self.role == 'tpb'
@@ -137,3 +146,50 @@ class ApplicantProfile(models.Model):
     
     def __str__(self):
         return f"{self.user.get_full_name()} - Applicant"
+
+
+class UserActivity(models.Model):
+    """Track user activities across the platform"""
+    
+    ACTIVITY_TYPES = [
+        ('login', _('User Login')),
+        ('logout', _('User Logout')),
+        ('profile_update', _('Profile Updated')),
+        ('loan_application', _('Loan Application Submitted')),
+        ('loan_view', _('Loan Application Viewed')),
+        ('loan_status_change', _('Loan Status Changed')),
+        ('document_upload', _('Document Uploaded')),
+        ('document_view', _('Document Viewed')),
+        ('chat_message', _('Chat Message Sent')),
+        ('voice_chat', _('Voice Chat Session')),
+        ('payment', _('Payment Made')),
+        ('commission_earned', _('Commission Earned')),
+        ('user_created', _('User Account Created')),
+        ('password_change', _('Password Changed')),
+        ('settings_change', _('Settings Changed')),
+        ('export_data', _('Data Exported')),
+        ('other', _('Other Activity')),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='activities')
+    activity_type = models.CharField(max_length=50, choices=ACTIVITY_TYPES)
+    description = models.TextField()
+    metadata = models.JSONField(default=dict, blank=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'user_activity'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['activity_type']),
+            models.Index(fields=['-created_at']),
+        ]
+        verbose_name = 'User Activity'
+        verbose_name_plural = 'User Activities'
+    
+    def __str__(self):
+        return f"{self.user.email} - {self.get_activity_type_display()} - {self.created_at}"

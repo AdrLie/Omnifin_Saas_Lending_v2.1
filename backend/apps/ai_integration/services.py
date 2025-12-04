@@ -95,19 +95,54 @@ class AIChatService:
             # Add current user message
             messages.append({"role": "user", "content": user_message})
             
-            # ✅ NEW SYNTAX - Generate AI response using new OpenAI API
+            # Define tools/functions the AI can use
+            tools = self._get_available_tools()
+            
+            # ✅ NEW SYNTAX - Generate AI response using new OpenAI API with function calling
             logger.info(f"Calling OpenAI API with model: {self.model}")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
+                tools=tools,
+                tool_choice="auto",
                 max_tokens=500,
                 temperature=0.7,
                 presence_penalty=0.1,
                 frequency_penalty=0.1
             )
             
-            # ✅ NEW SYNTAX - Extract AI response
-            ai_response = response.choices[0].message.content
+            response_message = response.choices[0].message
+            
+            # Check if AI wants to call a function
+            if response_message.tool_calls:
+                # Execute the function call
+                tool_call = response_message.tool_calls[0]
+                function_name = tool_call.function.name
+                function_args = json.loads(tool_call.function.arguments)
+                
+                logger.info(f"AI requested function call: {function_name} with args: {function_args}")
+                
+                # Execute the function
+                function_response = self._execute_function(function_name, function_args, conversation.user)
+                
+                # Add function call to messages
+                messages.append(response_message.model_dump())
+                messages.append({
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "name": function_name,
+                    "content": json.dumps(function_response)
+                })
+                
+                # Get AI's final response after function execution
+                second_response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages
+                )
+                ai_response = second_response.choices[0].message.content
+            else:
+                # ✅ NEW SYNTAX - Extract AI response
+                ai_response = response_message.content
             
             # Save AI message
             Message.objects.create(
@@ -154,6 +189,18 @@ class AIChatService:
         - Guide users through the application process step by step
         - If you don't understand something, ask for clarification
         - Never provide financial advice or make loan decisions
+        
+        When a user wants to apply for a loan, you need to collect these required fields:
+        1. loan_amount: The amount they want to borrow (number)
+        2. loan_purpose: The reason for the loan (text)
+        3. loan_term: The repayment period in months (number)
+        4. interest_rate: The desired interest rate percentage (number)
+        
+        IMPORTANT: 
+        - Only call submit_loan_application ONCE per loan application request
+        - After successfully submitting an application, DO NOT submit it again even if the user responds
+        - If the user says "thanks" or similar after submission, acknowledge it but do NOT resubmit
+        - If they want to apply for ANOTHER loan, treat it as a completely new application
         """
         
         if context:
@@ -163,6 +210,111 @@ class AIChatService:
             base_prompt += context_str
         
         return base_prompt
+    
+    def _get_available_tools(self) -> List[Dict[str, Any]]:
+        """Define tools/functions available to the AI"""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "submit_loan_application",
+                    "description": "Submit a loan application for the user. Use this when you have collected all required information from the user.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "loan_amount": {
+                                "type": "number",
+                                "description": "The loan amount requested by the user"
+                            },
+                            "loan_purpose": {
+                                "type": "string",
+                                "description": "The purpose/reason for the loan"
+                            },
+                            "loan_term": {
+                                "type": "integer",
+                                "description": "The loan term in months"
+                            },
+                            "interest_rate": {
+                                "type": "number",
+                                "description": "The desired interest rate percentage"
+                            }
+                        },
+                        "required": ["loan_amount", "loan_purpose", "loan_term", "interest_rate"]
+                    }
+                }
+            }
+        ]
+    
+    def _execute_function(self, function_name: str, function_args: Dict[str, Any], user) -> Dict[str, Any]:
+        """Execute a function called by the AI"""
+        if function_name == "submit_loan_application":
+            return self._submit_loan_application(function_args, user)
+        else:
+            return {"error": f"Unknown function: {function_name}"}
+    
+    def _submit_loan_application(self, application_data: Dict[str, Any], user) -> Dict[str, Any]:
+        """Submit a loan application"""
+        try:
+            from apps.loans.models import Application
+            from apps.authentication.models import ApplicantProfile
+            from apps.authentication.activity_utils import log_activity
+            
+            # Check if user has applicant profile
+            if not hasattr(user, 'applicant_profile'):
+                return {
+                    "success": False,
+                    "error": "User must have an applicant profile to apply for loans. Please create your profile first."
+                }
+            
+            applicant = user.applicant_profile
+            
+            # Get TPB if user was referred
+            tpb = None
+            if hasattr(applicant, 'referred_by') and applicant.referred_by:
+                tpb = applicant.referred_by
+            
+            # Create the application
+            application = Application.objects.create(
+                applicant=applicant,
+                tpb=tpb,
+                loan_amount=application_data['loan_amount'],
+                loan_purpose=application_data['loan_purpose'],
+                loan_term=application_data['loan_term'],
+                interest_rate=application_data['interest_rate']
+            )
+            
+            # Log activity
+            log_activity(
+                user=user,
+                activity_type='loan_application',
+                description=f"Applied for {application_data['loan_purpose']} loan of ${application_data['loan_amount']} via AI Chat",
+                metadata={
+                    'application_id': str(application.id),
+                    'application_number': application.application_number,
+                    'loan_amount': str(application_data['loan_amount']),
+                    'loan_purpose': application_data['loan_purpose'],
+                    'loan_term': application_data['loan_term'],
+                    'interest_rate': str(application_data['interest_rate']),
+                    'source': 'ai_chat'
+                }
+            )
+            
+            return {
+                "success": True,
+                "application_id": str(application.id),
+                "application_number": application.application_number,
+                "status": application.status,
+                "message": f"Loan application {application.application_number} submitted successfully! The application has been completed. If you'd like to apply for another loan, please let me know."
+            }
+            
+        except Exception as e:
+            logger.error(f"Error submitting loan application: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
 
 class VoiceService:

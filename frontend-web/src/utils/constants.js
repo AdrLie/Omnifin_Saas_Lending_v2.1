@@ -127,11 +127,11 @@ export const ROUTES = {
   ADD_USER: '/users/add',
   MODIFY_PERMISSIONS: '/users/permissions',
   ANALYTICS: 'admin/analytics',
-  LOANS: 'admin/loans',
+  LOANS: '/admin/loans',
   ADMIN: '/admin',
   CONFIG: '/config',
   PROMPTS: '/prompts',
-  KNOWLEDGE: 'admin/knowledge',
+  KNOWLEDGE: '/admin/knowledge',
 };
 
 // Storage Keys

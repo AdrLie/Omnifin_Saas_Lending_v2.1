@@ -21,7 +21,7 @@ const LoginPage = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -87,7 +87,7 @@ const LoginPage = () => {
               AI-Powered Lending Platform
             </Typography>
             <Typography variant="body1" sx={{ opacity: 0.9, maxWidth: 400 }}>
-              Transform your lending process with intelligent AI assistance, 
+              Transform your lending process with intelligent AI assistance,
               seamless integrations, and comprehensive user management.
             </Typography>
             <Box sx={{ mt: 4, display: 'flex', gap: 2 }}>
@@ -199,7 +199,12 @@ const LoginPage = () => {
 
               <Box sx={{ textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Don't have an account? Contact your administrator.
+                  Don't have an account?{' '}
+                  <Link to="/register" style={{ textDecoration: 'none' }}>
+                    <Typography variant="body2" color="primary" sx={{ cursor: 'pointer', display: 'inline' }}>
+                      Sign up
+                    </Typography>
+                  </Link>
                 </Typography>
               </Box>
             </Box>

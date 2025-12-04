@@ -168,41 +168,51 @@ const VoiceChatPage = () => {
 
       recorder.onstop = async () => {
         setIsRecording(false);
+        setTranscript('Processing...');
         const blob = new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || 'audio/webm' });
         chunksRef.current = [];
 
         // create a File to send
         const file = new File([blob], `recording_${Date.now()}.webm`, { type: blob.type });
 
-        // show a placeholder user message
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          content: '[Voice Recording]',
-          sender: 'user',
-          timestamp: new Date().toISOString(),
-          user: user?.name || 'You'
-        }]);
-
         // send audio file via ChatContext
         try {
           const response = await sendVoiceMessage(sessionId, file, selectedVoice);
           const data = response?.data || response;
 
-          // if backend returned audio to play
-          if (data?.audio || data?.audio_response) {
-            const audioPayload = data.audio || data.audio_response;
-            playAudioResponse(audioPayload, data.text || data.response || null);
+          // Extract transcribed text and AI response
+          const transcribedText = data?.text || '[Voice Recording]';
+          const aiResponse = data?.response;
+          const audioPayload = data?.audio || data?.audio_response;
+
+          // Show transcribed text briefly
+          setTranscript(transcribedText);
+
+          // Add user's transcribed message
+          setMessages(prev => [...prev, {
+            id: Date.now(),
+            content: transcribedText,
+            sender: 'user',
+            timestamp: new Date().toISOString(),
+            user: user?.email || user?.username || 'You'
+          }]);
+
+          // Add AI response with audio if available
+          if (aiResponse) {
+            if (audioPayload) {
+              playAudioResponse(audioPayload, aiResponse);
+            } else {
+              addAIMessage(aiResponse);
+            }
           }
 
-          // if backend returned text response, show it
-          const textResp = data?.response || data?.text || (data?.data && (data.data.response || data.data.text));
-          if (textResp) addAIMessage(textResp);
+          // Clear transcript after a brief delay to allow user to see it
+          setTimeout(() => setTranscript(''), 2000);
         } catch (err) {
           console.error('Failed to upload voice message:', err);
           setError('Failed to send voice message. Please try again.');
-        } finally {
-          // clear transient recording transcript
           setTranscript('');
+        } finally {
           // stop and release media tracks
           if (mediaStreamRef.current) {
             mediaStreamRef.current.getTracks().forEach(t => t.stop());
@@ -241,7 +251,7 @@ const VoiceChatPage = () => {
       content: text,
       sender: 'user',
       timestamp: new Date().toISOString(),
-      user: user?.name || 'User'
+      user: user?.email || user?.username || 'You'
     };
 
     setMessages(prev => [...prev, userMessage]);
