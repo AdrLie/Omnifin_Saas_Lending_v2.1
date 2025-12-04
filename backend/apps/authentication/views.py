@@ -4,9 +4,6 @@ from django.http import JsonResponse
 @ensure_csrf_cookie
 def get_csrf_token(request):
     return JsonResponse({'detail': 'CSRF cookie set'})
-"""
-Authentication views for Omnifin Platform
-"""
 
 from rest_framework import status, generics, permissions
 from rest_framework.decorators import api_view, permission_classes
@@ -84,6 +81,16 @@ class UserLoginView(generics.GenericAPIView):
         user.last_login = timezone.now()
         user.save()
         
+        # Log activity
+        from apps.authentication.activity_utils import log_activity
+        log_activity(
+            user=user,
+            activity_type='login',
+            description=f'{user.get_full_name() or user.email} logged in',
+            metadata={'login_method': 'email'},
+            request=request
+        )
+        
         # 3. Standard Success Response
         return Response({
             'success': True,
@@ -99,6 +106,15 @@ class UserLogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def post(self, request, *args, **kwargs):
+        # Log activity before logout
+        from apps.authentication.activity_utils import log_activity
+        log_activity(
+            user=request.user,
+            activity_type='logout',
+            description=f'{request.user.get_full_name() or request.user.email} logged out',
+            request=request
+        )
+        
         # Delete token
         try:
             request.user.auth_token.delete()
@@ -132,6 +148,24 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     
     def get_object(self):
         return self.request.user
+    
+    def perform_update(self, serializer):
+        from apps.authentication.activity_utils import log_activity
+        
+        user = serializer.save()
+        
+        # Log profile update activity
+        updated_fields = list(serializer.validated_data.keys())
+        log_activity(
+            user=user,
+            activity_type='profile_update',
+            description=f"Updated profile information",
+            metadata={
+                'updated_fields': updated_fields,
+                'profile_type': 'user'
+            },
+            request=self.request
+        )
 
 
 class TPBProfileView(generics.RetrieveUpdateAPIView):
@@ -150,10 +184,25 @@ class TPBProfileView(generics.RetrieveUpdateAPIView):
             return None
     
     def perform_update(self, serializer):
+        from apps.authentication.activity_utils import log_activity
+        
         if not hasattr(self.request.user, 'tpb_profile'):
             serializer.save(user=self.request.user)
         else:
             serializer.save()
+        
+        # Log profile update activity
+        updated_fields = list(serializer.validated_data.keys())
+        log_activity(
+            user=self.request.user,
+            activity_type='profile_update',
+            description=f"Updated TPB profile information",
+            metadata={
+                'updated_fields': updated_fields,
+                'profile_type': 'tpb'
+            },
+            request=self.request
+        )
 
 
 class ApplicantProfileView(generics.RetrieveUpdateAPIView):
@@ -171,11 +220,47 @@ class ApplicantProfileView(generics.RetrieveUpdateAPIView):
         except ApplicantProfile.DoesNotExist:
             return None
     
-    def perform_update(self, serializer):
-        if not hasattr(self.request.user, 'applicant_profile'):
-            serializer.save(user=self.request.user)
+    def put(self, request, *args, **kwargs):
+        """Handle PUT for both create and update"""
+        if not hasattr(request.user, 'applicant_profile'):
+            # Create new profile
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
         else:
-            serializer.save()
+            # Update existing profile
+            return self.update(request, *args, **kwargs)
+    
+    def patch(self, request, *args, **kwargs):
+        """Handle PATCH for partial update"""
+        if not hasattr(request.user, 'applicant_profile'):
+            # Create new profile with partial data
+            serializer = self.get_serializer(data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            # Partial update existing profile
+            return self.partial_update(request, *args, **kwargs)
+    
+    def perform_update(self, serializer):
+        from apps.authentication.activity_utils import log_activity
+        
+        serializer.save()
+        
+        # Log profile update activity
+        updated_fields = list(serializer.validated_data.keys())
+        log_activity(
+            user=self.request.user,
+            activity_type='profile_update',
+            description=f"Updated applicant profile information",
+            metadata={
+                'updated_fields': updated_fields,
+                'profile_type': 'applicant'
+            },
+            request=self.request
+        )
 
 
 class UserManagementView(generics.GenericAPIView):
@@ -265,3 +350,72 @@ def password_reset_confirm(request):
     
     # In production, implement password reset confirmation
     return Response({'message': 'Password reset successful'})
+
+
+# Activity tracking views
+from rest_framework import viewsets, filters
+from apps.authentication.models import UserActivity
+from apps.authentication.activity_serializers import UserActivitySerializer, CreateActivitySerializer
+from django.db.models import Q
+
+
+class UserActivityViewSet(viewsets.ModelViewSet):
+    """ViewSet for user activities"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserActivitySerializer
+    filter_backends = [filters.OrderingFilter, filters.SearchFilter]
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+    search_fields = ['description', 'activity_type']
+    
+    def get_queryset(self):
+        user = self.request.user
+        queryset = UserActivity.objects.select_related('user')
+        
+        # Apply filters
+        activity_type = self.request.query_params.get('activity_type', None)
+        user_id = self.request.query_params.get('user_id', None)
+        date_from = self.request.query_params.get('date_from', None)
+        date_to = self.request.query_params.get('date_to', None)
+        
+        # Admin/Superadmin can see all activities, others see only their own
+        if not (user.is_admin or user.is_superadmin):
+            queryset = queryset.filter(user=user)
+        elif user_id:
+            queryset = queryset.filter(user_id=user_id)
+        
+        if activity_type:
+            queryset = queryset.filter(activity_type=activity_type)
+        
+        if date_from:
+            queryset = queryset.filter(created_at__gte=date_from)
+        
+        if date_to:
+            queryset = queryset.filter(created_at__lte=date_to)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return CreateActivitySerializer
+        return UserActivitySerializer
+    
+    def perform_create(self, serializer):
+        # Auto-set user and capture request metadata
+        ip_address = self.get_client_ip()
+        user_agent = self.request.META.get('HTTP_USER_AGENT', '')
+        
+        serializer.save(
+            user=self.request.user,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+    
+    def get_client_ip(self):
+        """Get client IP address"""
+        x_forwarded_for = self.request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = self.request.META.get('REMOTE_ADDR')
+        return ip

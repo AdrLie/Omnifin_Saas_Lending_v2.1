@@ -105,6 +105,99 @@ class ApplicationStatusHistory(models.Model):
         return f"{self.application.application_number} - {self.status}"
 
 
+class ApplicationProgress(models.Model):
+    """Track application workflow progress through steps"""
+    
+    STEP_CHOICES = [
+        (0, _('Application Submitted')),
+        (1, _('Initial Review')),
+        (2, _('Document Verification')),
+        (3, _('Credit Check')),
+        (4, _('Final Approval')),
+        (5, _('Funding')),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    application = models.OneToOneField(Application, on_delete=models.CASCADE, related_name='progress')
+    current_step = models.IntegerField(choices=STEP_CHOICES, default=0)
+    step_0_completed = models.BooleanField(default=True)  # Auto-completed on submission
+    step_0_completed_at = models.DateTimeField(auto_now_add=True)
+    step_0_notes = models.TextField(blank=True, null=True)
+    
+    step_1_completed = models.BooleanField(default=False)
+    step_1_completed_at = models.DateTimeField(blank=True, null=True)
+    step_1_completed_by = models.ForeignKey('authentication.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='step_1_completions')
+    step_1_notes = models.TextField(blank=True, null=True)
+    
+    step_2_completed = models.BooleanField(default=False)
+    step_2_completed_at = models.DateTimeField(blank=True, null=True)
+    step_2_completed_by = models.ForeignKey('authentication.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='step_2_completions')
+    step_2_notes = models.TextField(blank=True, null=True)
+    step_2_documents_verified = models.JSONField(default=dict, blank=True)  # Track which docs are verified
+    
+    step_3_completed = models.BooleanField(default=False)
+    step_3_completed_at = models.DateTimeField(blank=True, null=True)
+    step_3_completed_by = models.ForeignKey('authentication.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='step_3_completions')
+    step_3_notes = models.TextField(blank=True, null=True)
+    step_3_credit_check_result = models.JSONField(default=dict, blank=True)
+    
+    step_4_completed = models.BooleanField(default=False)
+    step_4_completed_at = models.DateTimeField(blank=True, null=True)
+    step_4_completed_by = models.ForeignKey('authentication.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='step_4_completions')
+    step_4_notes = models.TextField(blank=True, null=True)
+    step_4_decision = models.CharField(max_length=20, blank=True, null=True)  # 'approved' or 'rejected'
+    
+    step_5_completed = models.BooleanField(default=False)
+    step_5_completed_at = models.DateTimeField(blank=True, null=True)
+    step_5_completed_by = models.ForeignKey('authentication.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='step_5_completions')
+    step_5_notes = models.TextField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'loans_applicationprogress'
+        indexes = [
+            models.Index(fields=['application']),
+            models.Index(fields=['current_step']),
+        ]
+    
+    def __str__(self):
+        return f"{self.application.application_number} - Step {self.current_step}"
+    
+    def get_step_status(self, step):
+        """Get completion status for a specific step"""
+        return getattr(self, f'step_{step}_completed', False)
+    
+    def complete_step(self, step, user=None, notes=None, **kwargs):
+        """Mark a step as completed"""
+        from django.utils import timezone
+        
+        setattr(self, f'step_{step}_completed', True)
+        setattr(self, f'step_{step}_completed_at', timezone.now())
+        
+        if user:
+            completed_by_field = f'step_{step}_completed_by'
+            if hasattr(self, completed_by_field):
+                setattr(self, completed_by_field, user)
+        
+        if notes:
+            setattr(self, f'step_{step}_notes', notes)
+        
+        # Handle step-specific data
+        for key, value in kwargs.items():
+            field_name = f'step_{step}_{key}'
+            if hasattr(self, field_name):
+                setattr(self, field_name, value)
+        
+        # Auto-advance to next step if not already past it
+        if self.current_step == step and step < 5:
+            self.current_step = step + 1
+        
+        self.save()
+        return True
+
+
 class LoanOffer(models.Model):
     """Loan offers from lenders"""
     

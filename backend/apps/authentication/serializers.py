@@ -111,7 +111,7 @@ class ApplicantProfileSerializer(serializers.ModelSerializer):
         model = ApplicantProfile
         fields = ['id', 'user', 'date_of_birth', 'ssn_last_four', 'address', 'city', 
                  'state', 'zip_code', 'country', 'employment_status', 'annual_income', 
-                 'credit_score', 'referred_by', 'created_at']
+                 'credit_score', 'referred_by']
 
 
 class ApplicantProfileCreateSerializer(serializers.ModelSerializer):

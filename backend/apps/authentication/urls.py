@@ -8,12 +8,19 @@ from apps.authentication.views import (
     UserRegistrationView, UserLoginView, UserLogoutView, PasswordChangeView,
     UserProfileView, TPBProfileView, ApplicantProfileView, UserManagementView,
     UserDetailView, get_user_info, verify_email, password_reset_request,
-    password_reset_confirm
+    password_reset_confirm, UserActivityViewSet
 )
 
 app_name = 'authentication'
 
+# Router for viewsets
+router = DefaultRouter()
+router.register(r'activities', UserActivityViewSet, basename='activity')
+
 urlpatterns = [
+    # Activity tracking
+    path('', include(router.urls)),
+    
     # Authentication
     path('register/', UserRegistrationView.as_view(), name='register'),
     path('login/', UserLoginView.as_view(), name='login'),  # Explicit API login endpoint
