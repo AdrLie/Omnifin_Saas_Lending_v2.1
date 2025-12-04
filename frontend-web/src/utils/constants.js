@@ -122,6 +122,7 @@ export const ROUTES = {
   FORGOT_PASSWORD: '/forgot-password',
   CHAT: '/chat',
   VOICE_CHAT: '/voice-chat',
+  CHAT_HISTORY: '/chat-history',
   PROFILE: '/profile',
   USERS: '/admin/users',
   ADD_USER: '/users/add',

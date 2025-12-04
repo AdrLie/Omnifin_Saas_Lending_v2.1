@@ -34,9 +34,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         # Base queryset based on user role
-        if user.is_superadmin or user.is_admin or hasattr(user, 'tpb_profile'):
+        if user.is_superadmin or user.is_admin or user.is_tpb:
             queryset = Application.objects.all()
-        elif hasattr(user, 'applicant_profile'):
+        elif user.role == 'applicant':
             queryset = Application.objects.filter(applicant=user.applicant_profile)
         else:
             return Application.objects.none()

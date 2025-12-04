@@ -10,7 +10,7 @@ import {
   Grid,
   Card,
   CardContent,
-
+  CircularProgress,
   Alert,
   Chip,
   Slider,
@@ -37,12 +37,17 @@ import {
   Settings as SettingsIcon,
   SmartToy as AIIcon,
   Person as UserIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  History as HistoryIcon,
+  AccessTime as AccessTimeIcon,
+  Add as AddIcon
 } from '@mui/icons-material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
+import { chatService } from '../services/chatService';
+import { format } from 'date-fns';
 
 const VoiceChatPage = () => {
   const { user } = useAuth();
@@ -59,6 +64,10 @@ const VoiceChatPage = () => {
   const [error, setError] = useState(null);
   const [language, setLanguage] = useState('en-US');
   const [autoSend, setAutoSend] = useState(true);
+  
+  // Chat history state
+  const [conversations, setConversations] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const audioRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -67,6 +76,7 @@ const VoiceChatPage = () => {
   const createdObjectUrlRef = useRef(null);
   const resumeListenerRef = useRef(null);
   const [lastPlayedAudioUrl, setLastPlayedAudioUrl] = useState(null);
+  const initializedRef = useRef(false);
 
   const availableVoices = [
     { id: 'default', name: 'Default Voice', gender: 'neutral' },
@@ -261,11 +271,74 @@ const VoiceChatPage = () => {
     try {
       const aiResponse = await sendMessage(sessionId, text);
       if (aiResponse) addAIMessage(aiResponse);
+      
+      // Refresh history after first message
+      if (messages.length === 0) {
+        loadChatHistory();
+      }
     } catch (err) {
       console.error('Failed to get AI response:', err);
       setError('Failed to get AI response. Please try again.');
     }
   };
+
+  const loadChatHistory = async () => {
+    try {
+      setLoadingHistory(true);
+      // Filter for voice chat only (is_voice = true)
+      const data = await chatService.getUserConversations({ limit: 10, offset: 0, is_voice: 'true' });
+      setConversations(data.conversations || []);
+    } catch (err) {
+      console.error('Error loading voice chat history:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleLoadPreviousChat = async (conversation) => {
+    try {
+      const data = await chatService.getConversationMessages(conversation.id);
+      setSessionId(conversation.session_id);
+      
+      // Map messages to display format
+      const loadedMessages = (data.messages || []).map((msg, idx) => ({
+        id: idx + 1,
+        content: msg.content,
+        sender: msg.sender,
+        timestamp: msg.created_at,
+        user: msg.sender === 'user' ? (user?.name || 'User') : 'Omnifin AI',
+      }));
+      
+      setMessages(loadedMessages);
+      
+      if (loadedMessages.length === 0) {
+        setError('This conversation has no messages yet.');
+        setTimeout(() => setError(null), 3000);
+      }
+    } catch (err) {
+      console.error('Error loading conversation:', err);
+      setError('Failed to load conversation');
+    }
+  };
+
+  const handleNewChat = async () => {
+    setMessages([]);
+    setError(null);
+    setTranscript('');
+    // Create new voice conversation immediately
+    try {
+      const newSessionId = await startConversation(null, true);
+      setSessionId(newSessionId);
+    } catch (err) {
+      console.error('Failed to create new conversation:', err);
+    }
+  };
+
+  // Load chat history once on mount
+  if (!initializedRef.current) {
+    initializedRef.current = true;
+    loadChatHistory();
+  }
 
   const playAudioResponse = (audioData, text) => {
     try {
@@ -663,6 +736,90 @@ const VoiceChatPage = () => {
         {/* Sidebar */}
         <Grid item xs={12} md={4}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* New Chat Button */}
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleNewChat}
+              fullWidth
+              sx={{ mb: 0 }}
+            >
+              New Voice Chat
+            </Button>
+
+            {/* Recent Voice Chats */}
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <HistoryIcon sx={{ mr: 1 }} />
+                  <Typography variant="h6">
+                    Recent Voice Chats
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    maxHeight: 250,
+                    overflowY: 'scroll',
+                    '&::-webkit-scrollbar': {
+                      width: '6px',
+                    },
+                    '&::-webkit-scrollbar-track': {
+                      backgroundColor: 'rgba(0,0,0,0.05)',
+                      borderRadius: '10px',
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      borderRadius: '10px',
+                      '&:hover': {
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                      },
+                    },
+                  }}
+                >
+                  {loadingHistory ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : conversations.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                      No voice chat history yet
+                    </Typography>
+                  ) : (
+                    conversations.map((conv) => (
+                      <Box
+                        key={conv.id}
+                        onClick={() => handleLoadPreviousChat(conv)}
+                        sx={{
+                          p: 1.5,
+                          mb: 1,
+                          borderRadius: 1,
+                          cursor: 'pointer',
+                          bgcolor: conv.session_id === sessionId ? 'primary.light' : 'grey.100',
+                          '&:hover': {
+                            bgcolor: conv.session_id === sessionId ? 'primary.light' : 'grey.200',
+                          },
+                          transition: 'background-color 0.2s',
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                          <AccessTimeIcon sx={{ fontSize: 14, mr: 0.5, color: 'text.secondary' }} />
+                          <Typography variant="caption" color="text.secondary">
+                            {conv.created_at ? format(new Date(conv.created_at), 'MMM dd, yyyy HH:mm') : 'Unknown date'}
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" sx={{ fontWeight: conv.session_id === sessionId ? 600 : 400 }}>
+                          {conv.first_message || 'Voice Conversation'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {conv.message_count || 0} message{conv.message_count !== 1 ? 's' : ''}
+                        </Typography>
+                      </Box>
+                    ))
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
+
             {/* Voice Settings Card */}
             <Card>
               <CardContent>

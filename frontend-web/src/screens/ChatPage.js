@@ -32,28 +32,46 @@ import {
   Person as UserIcon,
   Menu as MenuIcon,
   Close as CloseIcon,
+  History as HistoryIcon,
+  AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
+import { chatService } from '../services/chatService';
+import { format } from 'date-fns';
 
 const ChatPage = () => {
   const { user } = useAuth();
-  const { startConversation, sendMessage, isLoading, activeConversation, getConversation } = useChat();
+  const { startConversation, sendMessage, isLoading } = useChat();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [error, setError] = useState(null);
-  const [sessionId, setSessionId] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   
   // State for mobile sidebar drawer
   const [mobileOpen, setMobileOpen] = useState(false);
+  
+  // Chat history state
+  const [conversations, setConversations] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  
+  // Initialize sessionId with a function that creates conversation once
+  const [sessionId, setSessionId] = useState(() => {
+    // Create conversation immediately on mount
+    startConversation().then(newSessionId => {
+      setSessionId(newSessionId);
+    }).catch(err => {
+      console.error('Failed to initialize conversation:', err);
+    });
+    return null; // Return null initially, will be set by the promise
+  });
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const startedRef = useRef(false);
+  const initializedRef = useRef(false);
 
   const suggestedPrompts = [
     'What loan options are available for small businesses?',
@@ -92,33 +110,65 @@ const ChatPage = () => {
     scrollToBottom();
   }, [messages]);
 
-  if (!startedRef.current) {
-    startedRef.current = true;
-    setTimeout(() => {
-      startNewChat();
-    }, 0);
+  const loadChatHistory = async () => {
+    try {
+      setLoadingHistory(true);
+      // Filter for text chat only (is_voice = false)
+      const data = await chatService.getUserConversations({ limit: 10, offset: 0, is_voice: 'false' });
+      setConversations(data.conversations || []);
+    } catch (err) {
+      console.error('Error loading chat history:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Load chat history once on mount
+  if (!initializedRef.current) {
+    initializedRef.current = true;
+    loadChatHistory();
   }
 
-  const startNewChat = async () => {
+  const handleLoadPreviousChat = async (conversation) => {
+    try {
+      const data = await chatService.getConversationMessages(conversation.id);
+      setSessionId(conversation.session_id);
+      
+      // Map messages to display format
+      const loadedMessages = (data.messages || []).map((msg, idx) => ({
+        id: idx + 1,
+        content: msg.content,
+        sender: msg.sender, // 'user' or 'ai' from backend
+        timestamp: msg.created_at,
+        user: msg.sender === 'user' ? (user?.name || 'User') : 'Omnifin AI',
+      }));
+      
+      setMessages(loadedMessages);
+      
+      if (isMobile) setMobileOpen(false);
+      
+      // Show message if no messages in conversation
+      if (loadedMessages.length === 0) {
+        setError('This conversation has no messages yet.');
+        setTimeout(() => setError(null), 3000);
+      }
+    } catch (err) {
+      console.error('Error loading conversation:', err);
+      setError('Failed to load conversation');
+    }
+  };
+
+  const handleNewChat = async () => {
+    setMessages([]);
+    setError(null);
+    // Create new conversation immediately
     try {
       const newSessionId = await startConversation();
       setSessionId(newSessionId);
-      const conv = getConversation(newSessionId);
-      if (conv && conv.messages) {
-        setMessages(conv.messages.map((msg, idx) => ({
-          id: idx + 1,
-          content: msg.content,
-          sender: msg.sender,
-          timestamp: msg.timestamp || new Date().toISOString(),
-          user: msg.sender === 'user' ? (user?.name || 'User') : 'Omnifin AI',
-          ...msg
-        })));
-      } else {
-        setMessages([]);
-      }
     } catch (err) {
-      setMessages([]);
+      console.error('Failed to create new conversation:', err);
     }
+    if (isMobile) setMobileOpen(false);
   };
 
   const scrollToBottom = () => {
@@ -126,7 +176,7 @@ const ChatPage = () => {
   };
 
   const handleSendMessage = async (message = inputMessage) => {
-    if (!message.trim() || isLoading || !sessionId) return;
+    if (!message.trim() || isLoading) return;
 
     const userMessage = {
       id: Date.now(),
@@ -136,12 +186,21 @@ const ChatPage = () => {
       user: user?.name || 'User'
     };
 
+    const isFirstMessage = messages.length === 0;
+    
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setError(null);
 
     try {
-      const aiResponse = await sendMessage(sessionId, message);
+      // Create conversation if doesn't exist
+      let currentSessionId = sessionId;
+      if (!currentSessionId) {
+        currentSessionId = await startConversation();
+        setSessionId(currentSessionId);
+      }
+
+      const aiResponse = await sendMessage(currentSessionId, message);
       const aiMessage = {
         id: Date.now() + 1,
         content: aiResponse,
@@ -150,6 +209,11 @@ const ChatPage = () => {
         user: 'Omnifin AI'
       };
       setMessages(prev => [...prev, aiMessage]);
+      
+      // Refresh chat history after first message to show this conversation
+      if (isFirstMessage) {
+        loadChatHistory();
+      }
     } catch (err) {
       setError('Failed to get response. Please try again.');
       const errorMessage = {
@@ -198,6 +262,98 @@ const ChatPage = () => {
       )}
 
       <Box sx={{ p: isMobile ? 2 : 0, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
+        {/* New Chat Button */}
+        <Button
+          variant="contained"
+          startIcon={<AIIcon />}
+          onClick={handleNewChat}
+          fullWidth
+          sx={{
+            py: 1.5,
+            textTransform: 'none',
+            fontSize: '1rem',
+            fontWeight: 'bold',
+            bgcolor: 'primary.main',
+            '&:hover': { bgcolor: 'primary.dark' }
+          }}
+        >
+          New Chat
+        </Button>
+
+        {/* Chat History */}
+        <Card variant="outlined">
+          <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="subtitle1" fontWeight="bold">
+                Recent Chats
+              </Typography>
+              <IconButton size="small" onClick={loadChatHistory} title="Refresh">
+                <HistoryIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            {loadingHistory ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : conversations.filter(conv => conv.message_count > 0).length === 0 ? (
+              <Typography variant="caption" color="text.secondary">
+                No previous conversations
+              </Typography>
+            ) : (
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 0.5, 
+                maxHeight: 250, 
+                minHeight: 100,
+                overflowY: 'scroll',
+                overflowX: 'hidden',
+                pr: 0.5,
+                '&::-webkit-scrollbar': { width: '6px' },
+                '&::-webkit-scrollbar-track': { background: '#f1f1f1', borderRadius: '3px' },
+                '&::-webkit-scrollbar-thumb': { background: '#888', borderRadius: '3px' },
+                '&::-webkit-scrollbar-thumb:hover': { background: '#555' }
+              }}>
+                {conversations
+                  .filter(conv => conv.message_count > 0)
+                  .map((conv) => (
+                  <Button
+                    key={conv.id}
+                    variant="text"
+                    size="small"
+                    onClick={() => handleLoadPreviousChat(conv)}
+                    sx={{
+                      justifyContent: 'flex-start',
+                      textAlign: 'left',
+                      textTransform: 'none',
+                      px: 1,
+                      py: 0.5,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      '&:hover': { bgcolor: 'action.hover' }
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, width: '100%' }}>
+                      {conv.is_voice_chat ? <MicIcon fontSize="small" /> : <AIIcon fontSize="small" />}
+                      <Typography variant="caption" noWrap sx={{ flex: 1 }}>
+                        {conv.last_message?.content || 'Chat conversation'}
+                      </Typography>
+                      <Chip label={conv.message_count} size="small" sx={{ height: 16, fontSize: '0.65rem' }} />
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 3 }}>
+                      <AccessTimeIcon sx={{ fontSize: 10 }} color="action" />
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                        {conv.started_at ? format(new Date(conv.started_at), 'MMM d, h:mm a') : 'Unknown date'}
+                      </Typography>
+                    </Box>
+                  </Button>
+                ))}
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Suggested Prompts */}
         <Card variant="outlined">
           <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
@@ -251,7 +407,7 @@ const ChatPage = () => {
         </Card>
 
         {/* Quick Actions */}
-        <Card variant="outlined">
+        {/* <Card variant="outlined">
           <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
             <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
               Actions
@@ -277,7 +433,7 @@ const ChatPage = () => {
               </Button>
             </Box>
           </CardContent>
-        </Card>
+        </Card> */}
       </Box>
     </Box>
   );
@@ -286,15 +442,16 @@ const ChatPage = () => {
     <Container 
       maxWidth="xl" 
       sx={{ 
-        height: { xs: 'calc(100dvh - 8px)', md: 'calc(100vh - 18px)' }, // Account for padding
+        height: '100vh',
         py: { xs: 1, md: 1 }, 
         px: { xs: 1, md: 1 },
         display: 'flex',
         flexDirection: 'column',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        overflow: 'hidden'
       }}
     >
-      <Grid container spacing={2} sx={{ flex: 1, maxHeight: '100%', overflow: 'hidden' }}>
+      <Grid container spacing={2} sx={{ flex: 1, height: '100%', overflow: 'hidden' }}>
         
         {/* Chat Interface - Takes full width on mobile, 8 cols on desktop */}
         <Grid item xs={12} md={8} lg={9} sx={{ height: '100%' }}>
@@ -462,7 +619,7 @@ const ChatPage = () => {
 
             {/* Input Area */}
             {sessionId && (
-              <Box sx={{ p: 2, bgcolor: 'background.paper', borderTop: 1, borderColor: 'divider' }}>
+              <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <IconButton 
                     onClick={() => fileInputRef.current?.click()}

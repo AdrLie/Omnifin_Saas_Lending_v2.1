@@ -8,7 +8,8 @@ from apps.authentication.views import (
     UserRegistrationView, UserLoginView, UserLogoutView, PasswordChangeView,
     UserProfileView, TPBProfileView, ApplicantProfileView, UserManagementView,
     UserDetailView, get_user_info, verify_email, password_reset_request,
-    password_reset_confirm, UserActivityViewSet
+    password_reset_confirm, UserActivityViewSet, enable_mfa, verify_mfa_setup,
+    disable_mfa, verify_mfa_login
 )
 
 app_name = 'authentication'
@@ -41,4 +42,10 @@ urlpatterns = [
     # Utility endpoints
     path('me/', get_user_info, name='user_info'),
     path('verify-email/', verify_email, name='verify_email'),
+    
+    # Two-Factor Authentication
+    path('mfa/enable/', enable_mfa, name='enable_mfa'),
+    path('mfa/verify-setup/', verify_mfa_setup, name='verify_mfa_setup'),
+    path('mfa/disable/', disable_mfa, name='disable_mfa'),
+    path('mfa/verify-login/', verify_mfa_login, name='verify_mfa_login'),
 ]

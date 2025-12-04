@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -24,6 +24,11 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TablePagination,
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -51,6 +56,7 @@ import {
   Star as ReviewIcon,
   Check as VerificationIcon,
   Settings as SettingsIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
@@ -99,9 +105,21 @@ const ProfilePage = () => {
   });
   const [activities, setActivities] = useState([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [activityPage, setActivityPage] = useState(0);
+  const [activityRowsPerPage, setActivityRowsPerPage] = useState(10);
+  const [totalActivities, setTotalActivities] = useState(0);
+  const [mfaDialogOpen, setMfaDialogOpen] = useState(false);
+  const [mfaSetupDialogOpen, setMfaSetupDialogOpen] = useState(false);
+  const [mfaQrCode, setMfaQrCode] = useState('');
+  const [mfaSecret, setMfaSecret] = useState('');
+  const [mfaToken, setMfaToken] = useState('');
+  const [mfaDisablePassword, setMfaDisablePassword] = useState('');
+  const [mfaDisableToken, setMfaDisableToken] = useState('');
+  const [mfaEnabled, setMfaEnabled] = useState(false);
 
   useEffect(() => {
     if (user) {
+      setMfaEnabled(user.mfa_enabled || false);
       setUserData({
         first_name: user.first_name || (user.name ? user.name.split(' ')[0] : ''),
         last_name: user.last_name || (user.name ? user.name.split(' ').slice(1).join(' ') : ''),
@@ -121,17 +139,43 @@ const ProfilePage = () => {
     loadActivities();
   }, []);
 
-  const loadActivities = async () => {
+  useEffect(() => {
+    loadActivities(activityPage, activityRowsPerPage);
+  }, [activityPage, activityRowsPerPage]);
+
+  const handleActivityPageChange = (event, newPage) => {
+    setActivityPage(newPage);
+  };
+
+  const handleActivityRowsPerPageChange = (event) => {
+    setActivityRowsPerPage(parseInt(event.target.value, 10));
+    setActivityPage(0);
+  };
+
+  const loadActivities = useCallback(async (page = activityPage, rowsPerPage = activityRowsPerPage) => {
     setLoadingActivities(true);
     try {
-      const data = await activityService.getActivities({ ordering: '-created_at' });
-      setActivities(data.results || data);
+      const data = await activityService.getActivities({ 
+        ordering: '-created_at',
+        page: page + 1, // API uses 1-based page numbering, MUI uses 0-based
+        page_size: rowsPerPage
+      });
+      
+      // Handle paginated response structure
+      if (data.results) {
+        setActivities(data.results);
+        setTotalActivities(data.count || 0);
+      } else if (Array.isArray(data)) {
+        // Fallback for non-paginated response
+        setActivities(data);
+        setTotalActivities(data.length);
+      }
     } catch (err) {
       console.error('Failed to load activities:', err);
     } finally {
       setLoadingActivities(false);
     }
-  };
+  }, [activityPage, activityRowsPerPage]);
 
   const loadApplicantProfile = async () => {
     try {
@@ -267,6 +311,151 @@ const ProfilePage = () => {
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
       setError(err.message || 'Failed to change password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEnableMfa = async () => {
+    // First check current user status
+    if (mfaEnabled) {
+      setError('Two-factor authentication is already enabled for your account');
+      return;
+    }
+    
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/mfa/enable/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${localStorage.getItem('authToken')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setMfaQrCode(data.qr_code);
+        setMfaSecret(data.secret);
+        setMfaSetupDialogOpen(true);
+        setError(null);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to enable MFA');
+      }
+    } catch (err) {
+      setError('Failed to enable MFA');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyMfaSetup = async () => {
+    if (!mfaToken) {
+      setError('Please enter the verification code');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/mfa/verify-setup/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${localStorage.getItem('authToken')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ token: mfaToken })
+      });
+      
+      if (response.ok) {
+        setSuccess('Two-factor authentication enabled successfully!');
+        setMfaEnabled(true);
+        setMfaSetupDialogOpen(false);
+        setMfaToken('');
+        setMfaQrCode('');
+        setMfaSecret('');
+        // Fetch updated user data
+        await fetchUpdatedUserData();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Invalid verification code');
+      }
+    } catch (err) {
+      setError('Failed to verify MFA setup');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchUpdatedUserData = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/me/`, {
+        headers: {
+          'Authorization': `Token ${localStorage.getItem('authToken')}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const updatedUser = data.user;
+        // Update localStorage with new user data
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        
+        // Update the local MFA state
+        setMfaEnabled(updatedUser.mfa_enabled || false);
+        
+        // Force page reload to update context
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      }
+    } catch (err) {
+      console.error('Failed to fetch updated user data:', err);
+    }
+  };
+
+  const handleDisableMfa = async () => {
+    if (!mfaDisablePassword) {
+      setError('Please enter your password');
+      return;
+    }
+
+    if (!mfaDisableToken) {
+      setError('Please enter your 2FA code');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/mfa/disable/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${localStorage.getItem('authToken')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          password: mfaDisablePassword,
+          token: mfaDisableToken
+        })
+      });
+      
+      if (response.ok) {
+        setSuccess('Two-factor authentication disabled successfully!');
+        setMfaEnabled(false);
+        setMfaDialogOpen(false);
+        setMfaDisablePassword('');
+        setMfaDisableToken('');
+        // Fetch updated user data
+        await fetchUpdatedUserData();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to disable MFA');
+      }
+    } catch (err) {
+      setError('Failed to disable MFA');
     } finally {
       setLoading(false);
     }
@@ -707,10 +896,13 @@ const ProfilePage = () => {
 
                 <Grid item xs={12} md={6}>
                   <Typography variant="h6" gutterBottom>
-                    Two-Factor Authentication
+                    Two-Factor Authentication (Google Authenticator)
                   </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    {user?.mfa_enabled ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Add an extra layer of security to your account by requiring a verification code from your phone.
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    {mfaEnabled ? (
                       <Chip
                         icon={<VerifiedIcon />}
                         label="Enabled"
@@ -725,13 +917,25 @@ const ProfilePage = () => {
                         variant="outlined"
                       />
                     )}
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => window.open('/mfa-setup', '_blank')}
-                    >
-                      {user?.mfa_enabled ? 'Manage' : 'Enable'}
-                    </Button>
+                    {mfaEnabled ? (
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        onClick={() => setMfaDialogOpen(true)}
+                      >
+                        Disable 2FA
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={handleEnableMfa}
+                        disabled={loading}
+                      >
+                        Enable 2FA
+                      </Button>
+                    )}
                   </Box>
                 </Grid>
               </Grid>
@@ -867,7 +1071,132 @@ const ProfilePage = () => {
                   )}
                 </List>
               )}
+              {!loadingActivities && activities.length > 0 && (
+                <TablePagination
+                  component="div"
+                  count={totalActivities}
+                  page={activityPage}
+                  onPageChange={handleActivityPageChange}
+                  rowsPerPage={activityRowsPerPage}
+                  onRowsPerPageChange={handleActivityRowsPerPageChange}
+                  rowsPerPageOptions={[5, 10, 25, 50]}
+                  sx={{ borderTop: 1, borderColor: 'divider', mt: 2 }}
+                />
+              )}
             </TabPanel>
+
+            {/* MFA Setup Dialog */}
+            <Dialog open={mfaSetupDialogOpen} onClose={() => setMfaSetupDialogOpen(false)} maxWidth="sm" fullWidth>
+              <DialogTitle>
+                Set Up Two-Factor Authentication
+                <IconButton
+                  onClick={() => setMfaSetupDialogOpen(false)}
+                  sx={{ position: 'absolute', right: 8, top: 8 }}
+                >
+                  <CloseIcon />
+                </IconButton>
+              </DialogTitle>
+              <DialogContent>
+                {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  1. Install Google Authenticator or any TOTP app on your phone
+                </Typography>
+                
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  2. Scan this QR code with your authenticator app:
+                </Typography>
+                
+                {mfaQrCode && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                    <img src={mfaQrCode} alt="QR Code" style={{ maxWidth: '250px' }} />
+                  </Box>
+                )}
+                
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Or enter this secret key manually:
+                </Typography>
+                <TextField
+                  fullWidth
+                  value={mfaSecret}
+                  InputProps={{
+                    readOnly: true,
+                  }}
+                  sx={{ mb: 2 }}
+                />
+                
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  3. Enter the 6-digit code from your authenticator app:
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Verification Code"
+                  value={mfaToken}
+                  onChange={(e) => setMfaToken(e.target.value)}
+                  placeholder="000000"
+                  inputProps={{ maxLength: 6 }}
+                />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setMfaSetupDialogOpen(false)}>Cancel</Button>
+                <Button 
+                  variant="contained" 
+                  onClick={handleVerifyMfaSetup}
+                  disabled={loading || !mfaToken}
+                >
+                  {loading ? <CircularProgress size={24} /> : 'Verify & Enable'}
+                </Button>
+              </DialogActions>
+            </Dialog>
+
+            {/* MFA Disable Dialog */}
+            <Dialog open={mfaDialogOpen} onClose={() => setMfaDialogOpen(false)} maxWidth="sm" fullWidth>
+              <DialogTitle>
+                Disable Two-Factor Authentication
+                <IconButton
+                  onClick={() => setMfaDialogOpen(false)}
+                  sx={{ position: 'absolute', right: 8, top: 8 }}
+                >
+                  <CloseIcon />
+                </IconButton>
+              </DialogTitle>
+              <DialogContent>
+                {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                
+                <Alert severity="warning" sx={{ mb: 3 }}>
+                  Disabling 2FA will make your account less secure. You will need to enter your password and a verification code from your authenticator app.
+                </Alert>
+                
+                <TextField
+                  fullWidth
+                  label="Password"
+                  type="password"
+                  value={mfaDisablePassword}
+                  onChange={(e) => setMfaDisablePassword(e.target.value)}
+                  sx={{ mb: 2 }}
+                />
+                
+                <TextField
+                  fullWidth
+                  label="2FA Verification Code"
+                  value={mfaDisableToken}
+                  onChange={(e) => setMfaDisableToken(e.target.value)}
+                  placeholder="000000"
+                  inputProps={{ maxLength: 6 }}
+                />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setMfaDialogOpen(false)}>Cancel</Button>
+                <Button 
+                  variant="contained" 
+                  color="error"
+                  onClick={handleDisableMfa}
+                  disabled={loading || !mfaDisablePassword || !mfaDisableToken}
+                >
+                  {loading ? <CircularProgress size={24} /> : 'Disable 2FA'}
+                </Button>
+              </DialogActions>
+            </Dialog>
 
             {/* Notifications Tab */}
             {/* <TabPanel value={tabValue} index={user?.role === 'applicant' ? 4 : 3}>
