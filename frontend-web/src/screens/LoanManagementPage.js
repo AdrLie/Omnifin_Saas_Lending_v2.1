@@ -63,6 +63,7 @@ const LoanManagementPage = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [loans, setLoans] = useState([]);
+  const [totalLoans, setTotalLoans] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
@@ -115,7 +116,9 @@ const LoanManagementPage = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const loadLoans = useCallback(async () => {
+  const loadLoans = useCallback(async (p, r) => {
+    const pageIndex = (typeof p === 'number' ? p : page);
+    const rowsIndex = (typeof r === 'number' ? r : rowsPerPage);
     try {
       setLoading(true);
       const params = {};
@@ -129,7 +132,8 @@ const LoanManagementPage = () => {
       }
       
       if (statusFilter !== 'all') {
-        params.status = statusFilter;
+        // normalize and trim
+        params.status = String(statusFilter).trim().toLowerCase();
       }
       if (typeFilter !== 'all') {
         params.loan_type = typeFilter;
@@ -138,7 +142,13 @@ const LoanManagementPage = () => {
         params.search = debouncedSearchQuery.trim();
       }
       
+      // Add pagination parameters for server-side pagination
+      params.page = (pageIndex || 0) + 1;
+      params.page_size = rowsIndex || rowsPerPage;
+
+      console.log('Loading loans with params:', params);
       const data = await loanService.getAllLoans(params);
+      console.log('Loan data response:', data);
       
       let loansArray = [];
       if (Array.isArray(data)) {
@@ -159,16 +169,17 @@ const LoanManagementPage = () => {
       }
 
       setLoans(loansArray);
+      setTotalLoans(data.count || loansArray.length);
     } catch (err) {
       setError('Failed to load loans');
     } finally {
       setLoading(false);
     }
-  }, [tabValue, statusFilter, typeFilter, debouncedSearchQuery]);
+  }, [tabValue, statusFilter, typeFilter, debouncedSearchQuery, page, rowsPerPage]);
 
   useEffect(() => {
-    loadLoans();
-  }, [loadLoans]);
+    loadLoans(page, rowsPerPage);
+  }, [loadLoans, page, rowsPerPage]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -196,7 +207,7 @@ const LoanManagementPage = () => {
       setLoading(true);
       await loanService.updateLoanStatus(loanId, newStatus);
       setSuccess('Loan status updated successfully!');
-      loadLoans();
+      loadLoans(page, rowsPerPage);
       setDialogOpen(false);
     } catch (err) {
       setError('Failed to update loan status');
@@ -209,7 +220,7 @@ const LoanManagementPage = () => {
     try {
       await loanService.addReviewNote(loanId, note);
       setSuccess('Review note added successfully!');
-      loadLoans();
+      loadLoans(page, rowsPerPage);
     } catch (err) {
       setError('Failed to add review note');
     }
@@ -268,7 +279,7 @@ const LoanManagementPage = () => {
     return new Date(dateString).toLocaleDateString();
   };
 
-  const totalApplications = Array.isArray(loans) ? loans.length : 0;
+  const totalApplications = totalLoans > 0 ? totalLoans : (Array.isArray(loans) ? loans.length : 0);
   const approvedCount = Array.isArray(loans) ? loans.filter(l => l.status === 'approved').length : 0;
   const totalValue = Array.isArray(loans) ? loans.reduce((sum, loan) => {
     const amount = parseFloat(loan?.loan_amount || loan?.amount || 0);
@@ -293,9 +304,10 @@ const LoanManagementPage = () => {
           </TableHead>
           <TableBody>
             {data.length > 0 ? (
-              data
-                .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                .map((loan) => (
+              (() => {
+                const serverPaginated = totalLoans > 0 && totalLoans !== data.length;
+                const displayData = serverPaginated ? data : data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+                return displayData.map((loan) => (
                   <TableRow key={loan.id}>
                     <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                       #{loan.id || loan.application_number}
@@ -349,6 +361,7 @@ const LoanManagementPage = () => {
                     </TableCell>
                   </TableRow>
                 ))
+              })()
             ) : (
               <TableRow>
                 <TableCell colSpan={7} align="center">
@@ -364,12 +377,13 @@ const LoanManagementPage = () => {
       <TablePagination
         rowsPerPageOptions={[5, 10, 25, 50]}
         component="div"
-        count={data.length}
+        count={totalLoans || data.length}
         rowsPerPage={rowsPerPage}
         page={page}
         onPageChange={(event, newPage) => setPage(newPage)}
         onRowsPerPageChange={(event) => {
-          setRowsPerPage(parseInt(event.target.value, 10));
+          const newRows = parseInt(event.target.value, 10);
+          setRowsPerPage(newRows);
           setPage(0);
         }}
       />
@@ -638,7 +652,17 @@ const LoanManagementPage = () => {
                       const newStep = activeStep - 1;
                       setActiveStep(newStep);
                       try {
-                        await applicationProgressService.setCurrentStep(selectedLoan.id, newStep);
+                        const res = await applicationProgressService.setCurrentStep(selectedLoan.id, newStep);
+                        // Backend returns { progress, application } now
+                        if (res && res.application) {
+                          setSelectedLoan(res.application);
+                        } else {
+                          const updatedLoan = await loanService.getLoanById(selectedLoan.id);
+                          setSelectedLoan(updatedLoan);
+                        }
+                        const progressData = res?.progress || await applicationProgressService.getProgress(selectedLoan.id);
+                        setProgress(progressData);
+                        loadLoans(page, rowsPerPage);
                       } catch (err) {
                         console.error('Failed to update step:', err);
                       }
@@ -654,9 +678,16 @@ const LoanManagementPage = () => {
                       const newStep = activeStep + 1;
                       setActiveStep(newStep);
                       try {
-                        await applicationProgressService.setCurrentStep(selectedLoan.id, newStep);
-                        const progressData = await applicationProgressService.getProgress(selectedLoan.id);
+                        const res = await applicationProgressService.setCurrentStep(selectedLoan.id, newStep);
+                        if (res && res.application) {
+                          setSelectedLoan(res.application);
+                        } else {
+                          const updatedLoan = await loanService.getLoanById(selectedLoan.id);
+                          setSelectedLoan(updatedLoan);
+                        }
+                        const progressData = res?.progress || await applicationProgressService.getProgress(selectedLoan.id);
                         setProgress(progressData);
+                        loadLoans(page, rowsPerPage);
                       } catch (err) {
                         console.error('Failed to update step:', err);
                       }

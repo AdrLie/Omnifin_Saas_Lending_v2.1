@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from apps.loans.models import Application, Lender, LoanOffer, ApplicationStatusHistory, ApplicationProgress
+from apps.loans.pagination import CustomPageNumberPagination
 from apps.loans.serializers import (
     ApplicationSerializer, ApplicationCreateSerializer, ApplicationStatusUpdateSerializer,
     LenderSerializer, LenderCreateSerializer, LoanOfferSerializer,
@@ -18,6 +19,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     """Application ViewSet"""
     permission_classes = [permissions.IsAuthenticated]
     queryset = Application.objects.all().order_by('-created_at')
+    pagination_class = CustomPageNumberPagination
 
     @action(detail=False, methods=['post'], url_path='apply')
     def apply(self, request):
@@ -55,9 +57,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         elif tab == 'rejected':
             queryset = queryset.filter(status='rejected')
         
-        # Status filter
+        # Status filter (case-insensitive)
         if status_filter:
-            queryset = queryset.filter(status=status_filter)
+            queryset = queryset.filter(status__iexact=status_filter.strip())
         
         # Loan type filter
         if loan_type:
@@ -257,12 +259,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             step_data['credit_check_result'] = serializer.validated_data['credit_check_result']
         elif step == 4 and 'decision' in serializer.validated_data:
             step_data['decision'] = serializer.validated_data['decision']
-            # Update application status based on decision
-            if serializer.validated_data['decision'] == 'approved':
-                application.status = 'approved'
-            else:
-                application.status = 'rejected'
-            application.save()
+            # Update application status based on decision using service for history
+            app_service = ApplicationService()
+            app_service.update_application_status(application, serializer.validated_data['decision'], notes, request.user)
         
         # Complete the step
         progress.complete_step(step, user=request.user, notes=notes, **step_data)
@@ -299,8 +298,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 request=request
             )
         
-        # Return updated progress
-        return Response(ApplicationProgressSerializer(progress).data)
+        # Return updated progress and application data
+        from apps.loans.serializers import ApplicationSerializer
+        return Response({
+            'progress': ApplicationProgressSerializer(progress).data,
+            'application': ApplicationSerializer(application).data
+        })
     
     @action(detail=True, methods=['post'], url_path='progress/set-step')
     def set_current_step(self, request, pk=None):
@@ -314,7 +317,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         application = self.get_object()
         progress, created = ApplicationProgress.objects.get_or_create(application=application)
         
-        step = request.data.get('step')
+        step = int(request.data.get('step')) if request.data.get('step') is not None else None
+        decision = request.data.get('decision')
         if step is None or not (0 <= int(step) <= 5):
             return Response(
                 {'error': 'Invalid step value'},
@@ -324,6 +328,26 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         old_step = progress.current_step
         progress.current_step = int(step)
         progress.save()
+
+        # Update application status based on the step (and optional decision)
+        # Mapping: step 1 -> 'under_review', step 2 -> 'documents_verified', step 3 -> 'credit_check',
+        # step 4 -> 'approved' or 'rejected' depending on decision, step 5 -> 'funded'
+        app_service = ApplicationService()
+        notes = request.data.get('notes')
+        if step == 1:
+            app_service.update_application_status(application, 'under_review', notes, request.user)
+        elif step == 2:
+            app_service.update_application_status(application, 'documents_verified', notes, request.user)
+        elif step == 3:
+            app_service.update_application_status(application, 'credit_check', notes, request.user)
+        elif step == 4:
+            if decision in ['approved', 'rejected']:
+                app_service.update_application_status(application, decision, notes, request.user)
+            else:
+                # If no decision provided, set to under_review (final approval pending)
+                app_service.update_application_status(application, 'under_review', notes, request.user)
+        elif step == 5:
+            app_service.update_application_status(application, 'funded', notes, request.user)
         
         # Log activity for TPB user when navigating steps
         if hasattr(request.user, 'tpb_profile'):
@@ -356,7 +380,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 request=request
             )
         
-        return Response(ApplicationProgressSerializer(progress).data)
+        from apps.loans.serializers import ApplicationSerializer
+        return Response({
+            'progress': ApplicationProgressSerializer(progress).data,
+            'application': ApplicationSerializer(application).data
+        })
 
     def destroy(self, request, *args, **kwargs):
         """Delete a loan application"""
@@ -374,6 +402,82 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             {'message': 'Application deleted successfully'},
             status=status.HTTP_204_NO_CONTENT
         )
+
+    @action(detail=False, methods=['post'], url_path='clear-all')
+    def clear_all(self, request):
+        """Bulk deletion of all loan application data (admin/superadmin only).
+
+        Request body must include a confirmation string to avoid accidental deletion:
+          { "confirm": "DELETE_ALL_LOANS", "dry_run": false }
+
+        If `dry_run` is true or omitted, endpoint returns the counts that would be deleted.
+        """
+        # Permission check: only admin / superadmin can do this
+        user = request.user
+        if not (user.is_superadmin or user.is_admin):
+            return Response({'error': 'Only admins and superadmins can clear all loans'}, status=status.HTTP_403_FORBIDDEN)
+
+        confirm = request.data.get('confirm')
+        dry_run = bool(request.data.get('dry_run', False))
+        if confirm != 'DELETE_ALL_LOANS':
+            return Response({'error': 'Missing or invalid confirmation string. Use confirm: DELETE_ALL_LOANS'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Compute counts to show or for logging
+        offers_count = LoanOffer.objects.count()
+        progress_count = ApplicationProgress.objects.count()
+        history_count = ApplicationStatusHistory.objects.count()
+        app_count = Application.objects.count()
+
+        if dry_run:
+            return Response({
+                'ok': True,
+                'dry_run': True,
+                'counts': {
+                    'applications': app_count,
+                    'offers': offers_count,
+                    'progress': progress_count,
+                    'history': history_count
+                }
+            })
+
+        # Perform deletion inside a single transaction
+        from django.db import transaction
+        with transaction.atomic():
+            # Delete in specific order to avoid cascade issues
+            # First, delete child records
+            LoanOffer.objects.all().delete()
+            ApplicationProgress.objects.all().delete()
+            ApplicationStatusHistory.objects.all().delete()
+            
+            # Then use raw SQL to delete applications to avoid cascade checks for missing tables
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM loans_application")
+                app_count = cursor.rowcount
+
+        # Log this action as an admin activity
+        try:
+            from apps.authentication.activity_utils import log_activity
+            log_activity(
+                user=request.user,
+                activity_type='loan_management',
+                description='Bulk deletion of all loan records by admin',
+                metadata={'applications_deleted': app_count, 'offers_deleted': offers_count},
+                request=request,
+            )
+        except Exception:
+            # If logging fails, do not fail the operation
+            pass
+
+        return Response({
+            'ok': True,
+            'counts_deleted': {
+                'applications': app_count,
+                'offers': offers_count,
+                'progress': progress_count,
+                'history': history_count
+            }
+        })
 
 
 class LenderViewSet(viewsets.ModelViewSet):
