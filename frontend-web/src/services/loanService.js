@@ -39,6 +39,7 @@ export const loanService = {
   // Get all loans
   getAllLoans: async (params = {}) => {
     try {
+      console.log('loanService.getAllLoans params:', params);
       const response = await api.get('/applications/', { params });
       return response.data;
     } catch (error) {
