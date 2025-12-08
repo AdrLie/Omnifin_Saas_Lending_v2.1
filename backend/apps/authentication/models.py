@@ -36,6 +36,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('tpb', _('Third-Party Broker')),
         ('admin', _('Admin')),
         ('superadmin', _('SuperAdmin')),
+        ('system_admin', _('System Admin')),
     ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(_('email address'), unique=True)
@@ -88,6 +89,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_superadmin(self):
         return self.role == 'superadmin'
+
+    @property
+    def is_system_admin(self):
+        return self.role == 'system_admin'
 
 
 class TPBProfile(models.Model):

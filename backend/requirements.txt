@@ -13,6 +13,7 @@ celery==5.3.4
 requests==2.31.0
 openai==2.8.1
 PyJWT==2.8.0
+stripe
 python-magic==0.4.27
 gunicorn==21.2.0
 whitenoise==6.6.0

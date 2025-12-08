@@ -36,6 +36,11 @@ class UserRegistrationView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         
+        # Auto-assign group_id for admin users
+        if user.role in ['admin', 'superadmin'] and not user.group_id:
+            user.group_id = user.id  # Use their own user ID as group ID
+            user.save()
+        
         # Create token
         token, created = Token.objects.get_or_create(user=user)
         
@@ -274,12 +279,16 @@ class ApplicantProfileView(generics.RetrieveUpdateAPIView):
 
 
 class UserManagementView(generics.GenericAPIView):
-    """User management view for admins"""
+    """User management view for admins and system admins"""
     permission_classes = [IsAdmin]
     
     def get(self, request, *args, **kwargs):
-        # Get users in admin's group
-        users = User.objects.filter(group_id=request.user.group_id)
+        # System admin can see all users, regular admin sees their group
+        if request.user.is_system_admin:
+            users = User.objects.all()
+        else:
+            users = User.objects.filter(group_id=request.user.group_id)
+        
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
     
@@ -290,18 +299,25 @@ class UserManagementView(generics.GenericAPIView):
         
         user = serializer.save()
         user.created_by = request.user
-        user.group_id = request.user.group_id
+        
+        # System admin creates standalone users, regular admin creates for their group
+        if not request.user.is_system_admin and request.user.group_id:
+            user.group_id = request.user.group_id
+        
         user.save()
         
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """User detail view for admins"""
+    """User detail view for admins and system admins"""
     serializer_class = UserSerializer
     permission_classes = [IsAdmin]
     
     def get_queryset(self):
+        # System admin can see all users, regular admin sees their group
+        if self.request.user.is_system_admin:
+            return User.objects.all()
         return User.objects.filter(group_id=self.request.user.group_id)
     
     def perform_destroy(self, instance):

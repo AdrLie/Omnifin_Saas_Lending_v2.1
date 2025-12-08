@@ -46,7 +46,18 @@ const LoginPage = () => {
         if (result.mfa_required) {
           setMfaRequired(true);
         } else {
-          navigate(ROUTES.HOME);
+          // Check user role and redirect accordingly
+          const storedUser = localStorage.getItem('user');
+          if (storedUser) {
+            const user = JSON.parse(storedUser);
+            if (user.role === 'system_admin') {
+              navigate(ROUTES.ADMIN_DASHBOARD);
+            } else {
+              navigate(ROUTES.HOME);
+            }
+          } else {
+            navigate(ROUTES.HOME);
+          }
         }
       } else {
         setError(result.error || 'Login failed');
@@ -81,7 +92,12 @@ const LoginPage = () => {
         localStorage.setItem('authToken', data.data.token);
         localStorage.setItem('user', JSON.stringify(data.data.user));
         
-        window.location.href = ROUTES.HOME;
+        // Check user role and redirect accordingly
+        if (data.data.user.role === 'system_admin') {
+          navigate(ROUTES.ADMIN_DASHBOARD);
+        } else {
+          navigate(ROUTES.HOME);
+        }
       } else {
         setError(data.error || 'Invalid verification code');
       }
@@ -243,7 +259,7 @@ const LoginPage = () => {
                     autoFocus
                     value={mfaToken}
                     onChange={(e) => setMfaToken(e.target.value)}
-                    placeholder="000000"
+                    placeholder="XXXXXX"
                     inputProps={{ maxLength: 6 }}
                     sx={{ mb: 3 }}
                   />

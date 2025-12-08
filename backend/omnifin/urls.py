@@ -12,7 +12,7 @@ from apps.authentication.views import get_csrf_token
 urlpatterns = [
     # Django admin
     path('admin/', admin.site.urls),
-    
+     
     # API authentication
     path('api/token/', auth_views.obtain_auth_token),
     
@@ -23,6 +23,7 @@ urlpatterns = [
     path('api/documents/', include('apps.documents.urls')),
     path('api/commissions/', include('apps.commissions.urls')),
     path('api/analytics/', include('apps.analytics.urls')),
+    path('api/subscriptions/', include('apps.subscriptions.urls')),
     
     # API documentation (in production, use tools like drf-yasg)
     path('api/', include('rest_framework.urls')),

@@ -2,10 +2,10 @@ from rest_framework import permissions
 
 
 class IsAdmin(permissions.BasePermission):
-    """Custom permission to only allow admins to access"""
+    """Custom permission to only allow admins and system admins to access"""
     
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.is_admin
+        return request.user and request.user.is_authenticated and (request.user.is_admin or request.user.is_system_admin)
 
 
 class IsSuperAdmin(permissions.BasePermission):
