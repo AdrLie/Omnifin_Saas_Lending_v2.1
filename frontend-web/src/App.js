@@ -18,6 +18,11 @@ import AnalyticsPage from './screens/AnalyticsPage';
 import LoanManagementPage from './screens/LoanManagementPage';
 import { UserProvider } from './contexts/UserContext';
 import RegisterPage from './screens/RegisterPage';
+import SubscriptionPlansScreen from './screens/SubscriptionPlansScreen';
+import SubscribeScreen from './screens/SubscribeScreen';
+import UsageDashboard from './screens/UsageDashboard';
+import ManageAdminSubscriptionsScreen from './screens/ManageAdminSubscriptionsScreen';
+import SystemAdminDashboard from './screens/system_admin/SystemAdminDashboard';
 
 // Create a custom theme with purple highlights as requested
 const theme = createTheme({
@@ -172,6 +177,29 @@ function App() {
                   <Route path="admin/loans" element={
                     <RoleBasedRoute allowedRoles={['super_admin', 'admin', 'tpb']}>
                       <LoanManagementPage />
+                    </RoleBasedRoute>
+                  } />
+
+                  {/* Subscription Routes */}
+                  <Route path="subscription-plans" element={
+                    <RoleBasedRoute allowedRoles={['super_admin', 'admin']}>
+                      <SubscriptionPlansScreen />
+                    </RoleBasedRoute>
+                  } />
+                  <Route path="manage-admin-subscriptions" element={
+                    <RoleBasedRoute allowedRoles={['super_admin']}>
+                      <ManageAdminSubscriptionsScreen />
+                    </RoleBasedRoute>
+                  } />
+                  <Route path="subscribe" element={
+                    <RoleBasedRoute allowedRoles={['admin']}>
+                      <SubscribeScreen />
+                    </RoleBasedRoute>
+                  } />
+                  <Route path="usage" element={<UsageDashboard />} />
+                  <Route path="admin-dashboard" element={
+                    <RoleBasedRoute allowedRoles={['system_admin']}>
+                      <SystemAdminDashboard />
                     </RoleBasedRoute>
                   } />
                 </Route>

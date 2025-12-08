@@ -158,7 +158,7 @@ const ChatHistoryPage = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
-      <Paper elevation={3}>
+      <Paper ele.vation={3}>
         <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h4">

@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'apps.ai_integration',
     'apps.commissions',
     'apps.analytics',
+    'apps.subscriptions',
 ]
 
 MIDDLEWARE = [
@@ -193,6 +194,11 @@ ULTRAVOX_API_KEY = os.getenv('ULTRAVOX_API_KEY', '')
 
 # OpenAI Model Configuration
 AI_MODEL = os.getenv('AI_MODEL', 'gpt-3.5-turbo')
+
+# Stripe Configuration
+STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY', '')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
 
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'

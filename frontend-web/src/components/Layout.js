@@ -17,7 +17,6 @@ import {
   Menu,
   MenuItem,
   Divider,
-  Badge,
   Tooltip,
   Chip,
   Paper,
@@ -36,6 +35,10 @@ import {
   AdminPanelSettings,
   Psychology,
   School,
+  CreditCard,
+  Assessment,
+  Subscriptions,
+  SupervisorAccount,
 } from '@mui/icons-material';
 import { AuthContext } from '../contexts/AuthContext';
 import { ROUTES } from '../utils/constants';
@@ -78,6 +81,8 @@ const Layout = () => {
       { text: 'User Management', icon: <Group />, path: ROUTES.USERS },
       { text: 'Analytics', icon: <Analytics />, path: ROUTES.ANALYTICS },
       { text: 'Loan Management', icon: <Description />, path: ROUTES.LOANS },
+      { text: 'Subscribe', icon: <CreditCard />, path: ROUTES.SUBSCRIBE },
+      { text: 'Usage Dashboard', icon: <Assessment />, path: ROUTES.USAGE },
     ];
 
     // For tbp, only show Analytics and Loan Management
@@ -90,6 +95,13 @@ const Layout = () => {
       { text: 'Prompt Management', icon: <Psychology />, path: ROUTES.PROMPTS },
       { text: 'Knowledge Bank', icon: <School />, path: ROUTES.KNOWLEDGE },
       { text: 'Admin Dashboard', icon: <AdminPanelSettings />, path: ROUTES.ADMIN },
+      { text: 'Subscription Plans', icon: <Subscriptions />, path: ROUTES.SUBSCRIPTION_PLANS },
+      { text: 'Manage Subscriptions', icon: <SupervisorAccount />, path: ROUTES.MANAGE_ADMIN_SUBSCRIPTIONS },
+    ];
+
+    const systemAdminItems = [
+      { text: 'System Admin Panel', icon: <Settings />, path: ROUTES.ADMIN_DASHBOARD },
+      { text: 'Profile', icon: <Person />, path: ROUTES.PROFILE },
     ];
 
     let items = [...baseItems];
@@ -98,6 +110,8 @@ const Layout = () => {
       items = [...items, ...adminItems];
     } else if (user?.role === 'tpb') {
       items = [...items, ...tpbItems];
+    } else if (user?.role === 'system_admin') {
+      items = [...systemAdminItems];
     }
 
     if (user?.role === 'superadmin') {
@@ -334,7 +348,7 @@ const Layout = () => {
             <Typography 
               variant="caption" 
               sx={{ 
-                display: { xs: 'none', sm: 'block' },
+                display: { xs: 'none', sm: 'block' }, 
                 opacity: 0.9,
               }}
             >

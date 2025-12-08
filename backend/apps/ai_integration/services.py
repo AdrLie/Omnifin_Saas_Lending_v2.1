@@ -144,6 +144,13 @@ class AIChatService:
                 # ✅ NEW SYNTAX - Extract AI response
                 ai_response = response_message.content
             
+            # Track token usage
+            try:
+                tokens_used = response.usage.total_tokens
+                self._track_token_usage(conversation.user, tokens_used, 'llm')
+            except Exception as e:
+                logger.warning(f"Could not track token usage: {str(e)}")
+            
             # Save AI message
             ai_msg = Message.objects.create(
                 conversation=conversation,
@@ -316,6 +323,32 @@ class AIChatService:
                 "success": False,
                 "error": str(e)
             }
+    
+    def _track_token_usage(self, user, tokens_used, usage_type='llm'):
+        """Track token usage for the user's group"""
+        try:
+            if not user.group_id:
+                return
+            
+            from apps.subscriptions.models import Subscription
+            from apps.subscriptions.usage_services import UsageTrackingService
+            
+            # Find active or incomplete subscription for group
+            subscription = Subscription.objects.filter(
+                group_id=user.group_id,
+                status__in=['active', 'incomplete', 'trialing']
+            ).first()
+            
+            if subscription:
+                UsageTrackingService.record_usage(
+                    subscription_id=str(subscription.id),
+                    usage_type=usage_type,
+                    tokens_used=tokens_used,
+                    user_id=str(user.id),
+                    metadata={'conversation_type': 'chat'}
+                )
+        except Exception as e:
+            logger.error(f"Error tracking token usage: {str(e)}")
 
 
 class VoiceService:
@@ -331,7 +364,7 @@ class VoiceService:
             logger.error(f"Error initializing VoiceService OpenAI client: {str(e)}")
             raise
     
-    def speech_to_text(self, audio_file) -> str:
+    def speech_to_text(self, audio_file, user=None) -> str:
         """Convert speech to text using OpenAI Whisper"""
         try:
             logger.info("Starting speech to text conversion with Whisper")
@@ -349,6 +382,15 @@ class VoiceService:
                 response_format="text"
             )
             
+            # Track voice token usage (estimate based on audio duration/size)
+            if user:
+                try:
+                    # Rough estimate: 1 token per 0.75 seconds of audio
+                    estimated_tokens = len(file_content) // 16000  # Approximate
+                    self._track_voice_usage(user, estimated_tokens)
+                except Exception as e:
+                    logger.warning(f"Could not track voice usage: {str(e)}")
+            
             logger.info(f"Successfully transcribed audio")
             return transcript
             
@@ -361,7 +403,7 @@ class VoiceService:
             logger.error(traceback.format_exc())
             raise Exception(f"Failed to transcribe audio: {str(e)}") # Return actual error for debugging
     
-    def text_to_speech(self, text: str, voice_id: str = None) -> str:
+    def text_to_speech(self, text: str, voice_id: str = None, user=None) -> str:
         """Convert text to speech using OpenAI TTS"""
         try:
             logger.info("Starting text to speech conversion")
@@ -377,6 +419,15 @@ class VoiceService:
             # Get audio content as bytes
             audio_bytes = response.content
             
+            # Track voice token usage
+            if user:
+                try:
+                    # Estimate tokens based on text length
+                    estimated_tokens = len(text) * 2  # Rough estimate
+                    self._track_voice_usage(user, estimated_tokens)
+                except Exception as e:
+                    logger.warning(f"Could not track voice usage: {str(e)}")
+            
             # Encode to base64 for transmission
             audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
             
@@ -388,6 +439,31 @@ class VoiceService:
             import traceback
             logger.error(traceback.format_exc())
             raise Exception("Failed to generate speech. Please try again.")
+    
+    def _track_voice_usage(self, user, tokens_used):
+        """Track voice token usage"""
+        try:
+            if not user.group_id:
+                return
+            
+            from apps.subscriptions.models import Subscription
+            from apps.subscriptions.usage_services import UsageTrackingService
+            
+            subscription = Subscription.objects.filter(
+                group_id=user.group_id,
+                status='active'
+            ).first()
+            
+            if subscription:
+                UsageTrackingService.record_usage(
+                    subscription_id=str(subscription.id),
+                    usage_type='voice',
+                    tokens_used=tokens_used,
+                    user_id=str(user.id),
+                    metadata={'conversation_type': 'voice'}
+                )
+        except Exception as e:
+            logger.error(f"Error tracking voice usage: {str(e)}")
     
     def text_to_speech_elevenlabs(self, text: str, voice_id: str = None) -> str:
         """Convert text to speech using ElevenLabs (alternative)"""

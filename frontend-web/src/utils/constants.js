@@ -133,6 +133,11 @@ export const ROUTES = {
   CONFIG: '/config',
   PROMPTS: '/prompts',
   KNOWLEDGE: '/admin/knowledge',
+  SUBSCRIPTION_PLANS: '/subscription-plans',
+  MANAGE_ADMIN_SUBSCRIPTIONS: '/manage-admin-subscriptions',
+  SUBSCRIBE: '/subscribe',
+  USAGE: '/usage',
+  ADMIN_DASHBOARD: '/admin-dashboard',
 };
 
 // Storage Keys
