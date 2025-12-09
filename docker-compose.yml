@@ -34,6 +34,7 @@ services:
       - redis
     command: >
       sh -c "python manage.py migrate &&
+             python manage.py create_default_admin &&
              python manage.py collectstatic --noinput &&
              python manage.py runserver 0.0.0.0:8001"
 
@@ -43,7 +44,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3001:3001"
-    env_file:   
+    env_file:
       - ./frontend-web/.env
     volumes:
       - ./frontend-web:/app
