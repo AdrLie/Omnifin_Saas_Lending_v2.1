@@ -38,7 +38,7 @@ const PlanManagementTab = () => {
   const [editingPlan, setEditingPlan] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    plan_type: 'monthly',
+    plan_type: 'basic',
     price: '',
     billing_period: 'monthly',
     llm_tokens_limit: '',
@@ -81,7 +81,7 @@ const PlanManagementTab = () => {
       setEditingPlan(null);
       setFormData({
         name: '',
-        plan_type: 'monthly',
+        plan_type: 'basic',
         price: '',
         billing_period: 'monthly',
         llm_tokens_limit: '',
@@ -258,6 +258,21 @@ const PlanManagementTab = () => {
             margin="normal"
             placeholder="e.g., Starter, Professional"
           />
+
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Plan Type</InputLabel>
+            <Select
+              name="plan_type"
+              value={formData.plan_type}
+              onChange={handleInputChange}
+              label="Plan Type"
+            >
+              <MenuItem value="free">Free</MenuItem>
+              <MenuItem value="basic">Basic</MenuItem>
+              <MenuItem value="premium">Premium</MenuItem>
+              <MenuItem value="enterprise">Enterprise</MenuItem>
+            </Select>
+          </FormControl>
 
           <TextField
             fullWidth
