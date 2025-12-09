@@ -12,7 +12,7 @@ from apps.subscriptions.serializers import (
 )
 from apps.subscriptions.services import SubscriptionService
 from apps.subscriptions.usage_services import UsageTrackingService
-from apps.authentication.permissions import IsSuperAdmin
+from apps.authentication.permissions import IsSystemAdmin
 import logging
 
 logger = logging.getLogger('omnifin')
@@ -23,7 +23,7 @@ class SubscriptionPlanViewSet(viewsets.ModelViewSet):
     
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [IsSuperAdmin()]
+            return [IsSystemAdmin()]
         return [permissions.AllowAny()]
     
     def get_serializer_class(self):
@@ -39,14 +39,14 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter subscriptions by user"""
         user = self.request.user
-        if user.is_superadmin:
+        if user.is_system_admin:
             return Subscription.objects.all()
-        # Admin users can see their group's subscription
+        # TPB manager can see their workspace subscription
         if user.group_id:
             return Subscription.objects.filter(group_id=user.group_id)
         return Subscription.objects.filter(user=user)
     
-    @action(detail=False, methods=['get'], permission_classes=[IsSuperAdmin])
+    @action(detail=False, methods=['get'], permission_classes=[IsSystemAdmin])
     def admin_users(self, request):
         """Get all admin users for subscription management - SuperAdmin only"""
         from apps.authentication.models import User
@@ -73,7 +73,7 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         
         return Response(users_data, status=status.HTTP_200_OK)
     
-    @action(detail=False, methods=['post'], permission_classes=[IsSuperAdmin])
+    @action(detail=False, methods=['post'], permission_classes=[IsSystemAdmin])
     def assign_subscription(self, request):
         user_id = request.data.get('user_id')
         plan_id = request.data.get('plan_id')
@@ -124,6 +124,58 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             logger.error(f"Error assigning subscription: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=False, methods=['post'])
+    def activate_trial(self, request):
+        """Activate free trial for TPB Manager organization"""
+        if not request.user.is_tpb_manager:
+            return Response(
+                {'error': 'Only TPB Managers can activate trial'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if not request.user.group_id:
+            return Response(
+                {'error': 'User must have a group_id to activate trial'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Check if subscription already exists
+            existing = Subscription.objects.filter(group_id=request.user.group_id).first()
+            
+            if existing:
+                if existing.status == 'active' or existing.status == 'trialing':
+                    return Response(
+                        {'error': 'Subscription already exists for this organization'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Create a free trial subscription
+            plan = SubscriptionPlan.objects.filter(plan_type='free').first()
+            if not plan:
+                return Response(
+                    {'error': 'Free trial plan not found'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            subscription, _ = SubscriptionService.create_subscription(
+                user=request.user,
+                plan_id=str(plan.id),
+                payment_method_id=None,
+                group_id=request.user.group_id
+            )
+            
+            return Response({
+                'subscription': SubscriptionSerializer(subscription).data,
+                'message': 'Trial activated successfully for 14 days'
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error(f"Error activating trial: {str(e)}")
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -266,6 +318,76 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
             )
     
     @action(detail=False, methods=['get'])
+    def status(self, request):
+        """Get current subscription status for the user"""
+        try:
+            group_id = request.user.group_id
+            if not group_id:
+                return Response({
+                    'status': 'no_subscription',
+                    'message': 'User has no subscription',
+                    'has_active_subscription': False
+                }, status=status.HTTP_200_OK)
+            
+            subscription = Subscription.objects.filter(
+                group_id=group_id
+            ).order_by('-created_at').first()
+            
+            if not subscription:
+                return Response({
+                    'status': 'no_subscription',
+                    'message': 'No subscription found for user group',
+                    'has_active_subscription': False
+                }, status=status.HTTP_200_OK)
+            
+            is_active = subscription.status in ['active', 'trialing']
+            return Response({
+                'status': subscription.status,
+                'has_active_subscription': is_active,
+                'plan': subscription.plan.name if subscription.plan else None,
+                'current_period_start': subscription.current_period_start,
+                'current_period_end': subscription.current_period_end,
+                'message': 'Active subscription found' if is_active else 'Subscription is not active'
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error getting subscription status: {str(e)}")
+            return Response({
+                'status': 'error',
+                'has_active_subscription': False,
+                'message': str(e)
+            }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'])
+    def current(self, request):
+        """Get current subscription details for the user"""
+        try:
+            group_id = request.user.group_id
+            if not group_id:
+                return Response(
+                    {'error': 'User has no group'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            subscription = Subscription.objects.filter(
+                group_id=group_id,
+                status__in=['active', 'trialing']
+            ).first()
+            
+            if not subscription:
+                return Response(
+                    {'error': 'No active subscription found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            return Response(SubscriptionSerializer(subscription).data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error getting current subscription: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=False, methods=['get'])
     def check_limits(self, request):
         """Check if user's group is approaching or over usage limits"""
         try:
@@ -305,7 +427,7 @@ class PaymentHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """Filter payment history by user's subscriptions"""
         user = self.request.user
-        if user.is_superadmin:
+        if user.is_system_admin:
             return PaymentHistory.objects.all()
         if user.group_id:
             return PaymentHistory.objects.filter(subscription__group_id=user.group_id)

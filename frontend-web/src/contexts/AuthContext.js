@@ -27,6 +27,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Reload user from localStorage (useful after external changes like 2FA login)
+  const reloadUser = () => {
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
+    } catch (error) {
+      console.error('Error reloading user:', error);
+    }
+  };
+
   const login = async (email, password) => {
     try {
       const response = await authService.login(email, password);
@@ -120,6 +132,7 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         updateProfile,
+        reloadUser,
       }}
     >
       {children}

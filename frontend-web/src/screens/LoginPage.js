@@ -24,7 +24,7 @@ const LoginPage = () => {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaToken, setMfaToken] = useState('');
 
-  const { login } = useContext(AuthContext);
+  const { login, reloadUser } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -89,8 +89,12 @@ const LoginPage = () => {
       const data = await response.json();
       
       if (response.ok && data.success) {
+        // Store in localStorage
         localStorage.setItem('authToken', data.data.token);
         localStorage.setItem('user', JSON.stringify(data.data.user));
+        
+        // Reload user in AuthContext
+        reloadUser();
         
         // Check user role and redirect accordingly
         if (data.data.user.role === 'system_admin') {
@@ -106,9 +110,7 @@ const LoginPage = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  return (
+  };  return (
     <Box
       sx={{
         minHeight: '100vh',

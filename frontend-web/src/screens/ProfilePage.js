@@ -130,7 +130,7 @@ const ProfilePage = () => {
         avatar: user.avatar || ''
       });
     }
-    if (user?.role === 'applicant') {
+    if (user?.role === 'tpb_customer') {
       loadApplicantProfile();
     }
   }, [user]);
@@ -585,7 +585,7 @@ const ProfilePage = () => {
               scrollButtons="auto"
             >
               <Tab label="Profile Info" icon={<PersonIcon />} />
-              {user?.role === 'applicant' && <Tab label="Applicant Profile" icon={<CreditCardIcon />} />}
+              {user?.role === 'tpb_customer' && <Tab label="Applicant Profile" icon={<CreditCardIcon />} />}
               <Tab label="Security" icon={<SecurityIcon />} />
               <Tab label="Activity" icon={<HistoryIcon />} />
               {/* <Tab label="Notifications" icon={<NotificationsIcon />} /> */}
@@ -694,7 +694,7 @@ const ProfilePage = () => {
             </TabPanel>
 
             {/* Applicant Profile Tab */}
-            {user?.role === 'applicant' && (
+            {user?.role === 'tpb_customer' && (
               <TabPanel value={tabValue} index={1}>
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
                 {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
@@ -835,7 +835,7 @@ const ProfilePage = () => {
             )}
 
             {/* Security Tab */}
-            <TabPanel value={tabValue} index={user?.role === 'applicant' ? 2 : 1}>
+            <TabPanel value={tabValue} index={user?.role === 'tpb_customer' ? 2 : 1}>
               {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
               {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
@@ -942,7 +942,7 @@ const ProfilePage = () => {
             </TabPanel>
 
             {/* Activity Tab */}
-            <TabPanel value={tabValue} index={user?.role === 'applicant' ? 3 : 2}>
+            <TabPanel value={tabValue} index={user?.role === 'tpb_customer' ? 3 : 2}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">
                   Recent Activity
@@ -1199,7 +1199,7 @@ const ProfilePage = () => {
             </Dialog>
 
             {/* Notifications Tab */}
-            {/* <TabPanel value={tabValue} index={user?.role === 'applicant' ? 4 : 3}>
+            {/* <TabPanel value={tabValue} index={user?.role === 'tpb_customer' ? 4 : 3}>
               <Typography variant="h6" gutterBottom>
                 Notification Preferences
               </Typography>

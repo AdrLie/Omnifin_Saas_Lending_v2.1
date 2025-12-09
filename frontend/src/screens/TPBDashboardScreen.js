@@ -1,11 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Appbar, Card, Title, Paragraph, ActivityIndicator } from 'react-native-paper';
+import { SubscriptionContext } from '../contexts/SubscriptionContext';
 import { analyticsService } from '../services/analyticsService';
+import SubscriptionRequired from '../components/SubscriptionRequired';
 
 export default function TPBDashboardScreen({ navigation }) {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { hasActiveSubscription } = useContext(SubscriptionContext);
 
   useEffect(() => {
     loadAnalytics();
@@ -22,6 +25,10 @@ export default function TPBDashboardScreen({ navigation }) {
       setLoading(false);
     }
   };
+
+  if (!hasActiveSubscription) {
+    return <SubscriptionRequired />;
+  }
 
   return (
     <View style={styles.container}>

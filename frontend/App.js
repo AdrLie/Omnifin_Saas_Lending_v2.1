@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Provider as PaperProvider, DefaultTheme } from 'react-native-paper';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { ChatProvider } from './src/contexts/ChatContext';
+import { SubscriptionProvider } from './src/contexts/SubscriptionContext';
 import Navigation from './src/navigation/Navigation';
 
 // Custom theme with purple highlights
@@ -26,11 +27,13 @@ export default function App() {
   return (
     <PaperProvider theme={theme}>
       <AuthProvider>
-        <ChatProvider>
-          <NavigationContainer>
-            <Navigation />
-          </NavigationContainer>
-        </ChatProvider>
+        <SubscriptionProvider>
+          <ChatProvider>
+            <NavigationContainer>
+              <Navigation />
+            </NavigationContainer>
+          </ChatProvider>
+        </SubscriptionProvider>
       </AuthProvider>
     </PaperProvider>
   );

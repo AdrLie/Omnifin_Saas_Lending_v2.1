@@ -51,6 +51,7 @@ class Application(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     applicant = models.ForeignKey(ApplicantProfile, on_delete=models.CASCADE, related_name='applications')
     tpb = models.ForeignKey(TPBProfile, on_delete=models.SET_NULL, null=True, blank=True)
+    group_id = models.UUIDField(null=True, blank=True, db_index=True, help_text="Organization/workspace group_id for TPB workspace isolation")
     application_number = models.CharField(max_length=50, unique=True)
     loan_purpose = models.CharField(max_length=100)
     loan_amount = models.DecimalField(max_digits=12, decimal_places=2)

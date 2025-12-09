@@ -1,15 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
 import { Appbar, List, Button, ActivityIndicator } from 'react-native-paper';
+import { SubscriptionContext } from '../contexts/SubscriptionContext';
 import { analyticsService } from '../services/analyticsService';
+import SubscriptionRequired from '../components/SubscriptionRequired';
 
 export default function LenderManagementScreen({ navigation }) {
   const [lenders, setLenders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { hasActiveSubscription } = useContext(SubscriptionContext);
 
   useEffect(() => {
-    loadLenders();
-  }, []);
+    if (hasActiveSubscription) {
+      loadLenders();
+    } else {
+      setLoading(false);
+    }
+  }, [hasActiveSubscription]);
 
   const loadLenders = async () => {
     setLoading(true);
@@ -30,6 +37,10 @@ export default function LenderManagementScreen({ navigation }) {
       right={props => <Button onPress={() => {/* Integrate offer management logic */}}>Manage</Button>}
     />
   );
+
+  if (!hasActiveSubscription) {
+    return <SubscriptionRequired />;
+  }
 
   return (
     <View style={styles.container}>

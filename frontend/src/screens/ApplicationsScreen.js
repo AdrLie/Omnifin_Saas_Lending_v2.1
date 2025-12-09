@@ -2,8 +2,10 @@ import React, { useState, useEffect, useContext } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Card, Title, Paragraph, Button, Chip, DataTable, FAB, Portal, Dialog, TextInput, ActivityIndicator } from 'react-native-paper';
 import { AuthContext } from '../contexts/AuthContext';
+import { SubscriptionContext } from '../contexts/SubscriptionContext';
 import { applicationsService } from '../services/applicationsService';
 import { APPLICATION_STATUS, STATUS_COLORS } from '../utils/constants';
+import SubscriptionRequired from '../components/SubscriptionRequired';
 
 export default function ApplicationsScreen({ navigation }) {
   const [applications, setApplications] = useState([]);
@@ -16,10 +18,15 @@ export default function ApplicationsScreen({ navigation }) {
   });
   
   const { user } = useContext(AuthContext);
+  const { hasActiveSubscription } = useContext(SubscriptionContext);
 
   useEffect(() => {
-    loadApplications();
-  }, []);
+    if (hasActiveSubscription) {
+      loadApplications();
+    } else {
+      setLoading(false);
+    }
+  }, [hasActiveSubscription]);
 
   const loadApplications = async () => {
     try {
@@ -138,6 +145,10 @@ export default function ApplicationsScreen({ navigation }) {
         <ActivityIndicator size="large" />
       </View>
     );
+  }
+
+  if (!hasActiveSubscription) {
+    return <SubscriptionRequired />;
   }
 
   return (

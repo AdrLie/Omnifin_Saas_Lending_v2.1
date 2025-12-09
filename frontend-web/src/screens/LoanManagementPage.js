@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import {
   Box,
   Container,
@@ -50,6 +50,8 @@ import {
 import { loanService } from '../services/loanService';
 import applicationProgressService from '../services/applicationProgressService';
 import LoanStepContent from '../components/loan-steps/LoanStepContent';
+import { SubscriptionContext } from '../contexts/SubscriptionContext';
+import SubscriptionRequired from '../components/SubscriptionRequired';
 
 const TabPanel = ({ children, value, index }) => (
   <div hidden={value !== index}>
@@ -75,6 +77,7 @@ const LoanManagementPage = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [progress, setProgress] = useState(null);
   const [loadingProgress, setLoadingProgress] = useState(false);
+  const { hasActiveSubscription } = useContext(SubscriptionContext);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -391,6 +394,10 @@ const LoanManagementPage = () => {
   );
 
   return (
+    <>
+      {!hasActiveSubscription ? (
+        <SubscriptionRequired />
+      ) : (
     <Container maxWidth="xl" sx={{ py: { xs: 2, md: 3 } }}>
       <Paper elevation={3}>
         <Box sx={{ p: { xs: 2, md: 4 }, borderBottom: 1, borderColor: 'divider' }}>
@@ -822,6 +829,8 @@ const LoanManagementPage = () => {
         </DialogActions>
       </Dialog>
     </Container>
+      )}
+    </>
   );
 };
 
