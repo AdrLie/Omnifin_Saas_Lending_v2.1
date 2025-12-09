@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   Box,
   Container,
@@ -29,6 +29,9 @@ import {
   FormControlLabel,
   Switch,
   Avatar,
+  Tabs,
+  Tab,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -36,14 +39,19 @@ import {
   Delete as DeleteIcon,
   Lock as LockIcon,
   LockOpen as UnlockIcon,
-  Email as EmailIcon,
   Search as SearchIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  ContentCopy as CopyIcon,
+  Refresh as RefreshIcon,
+  Check as CheckIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
+import { SubscriptionContext } from '../contexts/SubscriptionContext';
+import { API_BASE_URL } from '../utils/constants';
 
 const UserManagementPage = () => {
-  const { loadAllUsers, createUser, updateUser, deleteUser, sendPasswordReset } = useUser()
+  const { loadAllUsers, createUser, updateUser, deleteUser, sendPasswordReset } = useUser();
+  const { hasActiveSubscription } = useContext(SubscriptionContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -60,7 +68,7 @@ const UserManagementPage = () => {
     last_name: '',
     email: '',
     phone: '',
-    role: 'applicant',
+    role: 'tpb_customer',
     company: '',
     is_active: true,
     password: '',
@@ -71,21 +79,52 @@ const UserManagementPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [invitationCodes, setInvitationCodes] = useState([]);
+  const [loadingCodes, setLoadingCodes] = useState(false);
+  const [invitationDialogOpen, setInvitationDialogOpen] = useState(false);
+  const [invitationFormData, setInvitationFormData] = useState({
+    email: '',
+    days_valid: 7,
+  });
+  const [copiedCode, setCopiedCode] = useState(null);
+  const [organization, setOrganization] = useState(null);
+  const [loadingOrg, setLoadingOrg] = useState(true);
 
   const roles = [
-    { value: 'applicant', label: 'Loan Applicant' },
-    { value: 'tpb', label: 'Third Party Broker' },
-    { value: 'admin', label: 'Administrator' },
-    { value: 'super_admin', label: 'Super Administrator' }
+    { value: 'tpb_customer', label: 'TPB Customer (Applicant)' },
+    { value: 'tpb_staff', label: 'TPB Staff' },
+    { value: 'tpb_manager', label: 'TPB Manager' },
+    { value: 'system_admin', label: 'System Administrator' }
   ];
 
   useEffect(() => {
     loadUsers();
+    loadOrganization();
   }, []);
 
   useEffect(() => {
     filterUsers();
   }, [users, searchQuery, roleFilter, statusFilter]);
+
+  const loadOrganization = async () => {
+    try {
+      setLoadingOrg(true);
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${API_BASE_URL}/auth/organization/current/`, {
+        headers: {
+          'Authorization': `Token ${token}`,
+        },
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setOrganization(data);
+      }
+    } catch (err) {
+      console.error('Failed to load organization:', err);
+    } finally {
+      setLoadingOrg(false);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -237,22 +276,85 @@ const UserManagementPage = () => {
     }
   };
 
+  // Invitation Code Functions
+  const loadInvitationCodes = async () => {
+    try {
+      setLoadingCodes(true);
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${API_BASE_URL}/auth/invitation-codes/`, {
+        headers: {
+          'Authorization': `Token ${token}`,
+        },
+      });
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setInvitationCodes(data);
+      } else if (data.results) {
+        setInvitationCodes(data.results);
+      }
+    } catch (err) {
+      console.error('Failed to load invitation codes:', err);
+    } finally {
+      setLoadingCodes(false);
+    }
+  };
+
+  const handleCreateInvitationCode = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${API_BASE_URL}/auth/invitation-codes/create/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`,
+        },
+        body: JSON.stringify(invitationFormData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create invitation code');
+      }
+
+      const newCode = await response.json();
+      setSuccess('Invitation code created successfully!');
+      setInvitationFormData({ email: '', days_valid: 7 });
+      setInvitationDialogOpen(false);
+      loadInvitationCodes();
+    } catch (err) {
+      setError(err.message || 'Failed to create invitation code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyToClipboard = (code, index) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(index);
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
+
+  useEffect(() => {
+    loadInvitationCodes();
+  }, []);
+
   const getRoleColor = (role) => {
     const colors = {
-      'super_admin': 'error',
-      'admin': 'warning',
-      'tpb': 'info',
-      'applicant': 'success'
+      'system_admin': 'error',
+      'tpb_manager': 'warning',
+      'tpb_staff': 'info',
+      'tpb_customer': 'success'
     };
     return colors[role] || 'default';
   };
 
   const getRoleLabel = (role) => {
     const labels = {
-      'super_admin': 'Super Admin',
-      'admin': 'Administrator',
-      'tpb': 'Third Party Broker',
-      'applicant': 'Loan Applicant'
+      'system_admin': 'System Admin',
+      'tpb_manager': 'TPB Manager',
+      'tpb_staff': 'TPB Staff',
+      'tpb_customer': 'TPB Customer (Applicant)'
     };
     return labels[role] || role;
   };
@@ -280,108 +382,160 @@ const UserManagementPage = () => {
     }));
   };
 
+  const [activeTab, setActiveTab] = React.useState(0);
+
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
       <Paper elevation={3}>
-        {/* Header and Filters */}
+        {/* Header and Tabs */}
         <Box sx={{ p: 4, borderBottom: 1, borderColor: 'divider' }}>
           {/* Header */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
             <Box>
               <Typography variant="h4" gutterBottom>
-                User Management
+                Manage Team
               </Typography>
-              <Typography variant="body1" color="text.secondary">
-                Manage system users, roles, and permissions
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+                Manage team members and generate invitation codes
               </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, backgroundColor: '#f5f5f5', padding: '12px 16px', borderRadius: '8px', width: 'fit-content' }}>
+                <Typography variant="body2" sx={{ color: '#666', fontWeight: 500 }}>
+                  Organization:
+                </Typography>
+                {loadingOrg ? (
+                  <CircularProgress size={20} />
+                ) : organization ? (
+                  <>
+                    <Chip
+                      label={organization.name}
+                      color="primary"
+                      variant="outlined"
+                    />
+                    {organization.description && (
+                      <Tooltip title={organization.description}>
+                        <Typography variant="caption" sx={{ color: '#999', ml: 1 }}>
+                          {organization.description.substring(0, 50)}
+                          {organization.description.length > 50 ? '...' : ''}
+                        </Typography>
+                      </Tooltip>
+                    )}
+                  </>
+                ) : (
+                  <Typography variant="caption" sx={{ color: '#999' }}>
+                    No organization found
+                  </Typography>
+                )}
+              </Box>
             </Box>
-            <Button
-              variant="contained"
-              onClick={() => handleDialogOpen('create')}
-              startIcon={<AddIcon />}
-            >
-              Add User
-            </Button>
+            {activeTab === 0 && (
+              <Button
+                variant="contained"
+                onClick={() => handleDialogOpen('create')}
+                startIcon={<AddIcon />}
+              >
+                Add User
+              </Button>
+            )}
+            {activeTab === 1 && hasActiveSubscription && (
+              <Button
+                variant="contained"
+                onClick={() => setInvitationDialogOpen(true)}
+                startIcon={<AddIcon />}
+              >
+                Generate Code
+              </Button>
+            )}
           </Box>
 
-          {/* Search and Filters */}
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="role-filter-label">Role</InputLabel>
-                <Select
-                  labelId="role-filter-label"
-                  value={roleFilter}
-                  onChange={(e) => setRoleFilter(e.target.value)}
-                  label="Role"
-                >
-                  <MenuItem value="all">All Roles</MenuItem>
-                  {roles.map((role) => (
-                    <MenuItem key={role.value} value={role.value}>
-                      {role.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="status-filter-label">Status</InputLabel>
-                <Select
-                  labelId="status-filter-label"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  label="Status"
-                >
-                  <MenuItem value="all">All Status</MenuItem>
-                  <MenuItem value="active">Active</MenuItem>
-                  <MenuItem value="inactive">Inactive</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                placeholder="Search by name, email"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                InputProps={{
-                  startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                }}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <Button
-                fullWidth
-                variant="outlined"
-                startIcon={<CloseIcon />}
-                onClick={() => {
-                  setSearchQuery('');
-                  setRoleFilter('all');
-                  setStatusFilter('all');
-                }}
-              >
-                Clear Filters
-              </Button>
-            </Grid>
-          </Grid>
+          {/* Tabs */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+              <Tab label="Team Members" />
+              <Tab label="Invitation Codes" />
+            </Tabs>
+          </Box>
         </Box>
 
         {error && <Alert severity="error">{error}</Alert>}
         {success && <Alert severity="success">{success}</Alert>}
 
-        {/* Users Table */}
+        {/* Tab Content */}
         <Box sx={{ p: 3 }}>
+          {/* Team Members Tab */}
+          {activeTab === 0 && (
+            <>
+              {/* Search and Filters */}
+              <Grid container spacing={2} alignItems="center" sx={{ mb: 3 }}>
+                <Grid item xs={12} md={3}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="role-filter-label">Role</InputLabel>
+                    <Select
+                      labelId="role-filter-label"
+                      value={roleFilter}
+                      onChange={(e) => setRoleFilter(e.target.value)}
+                      label="Role"
+                    >
+                      <MenuItem value="all">All Roles</MenuItem>
+                      {roles.map((role) => (
+                        <MenuItem key={role.value} value={role.value}>
+                          {role.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="status-filter-label">Status</InputLabel>
+                    <Select
+                      labelId="status-filter-label"
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      label="Status"
+                    >
+                      <MenuItem value="all">All Status</MenuItem>
+                      <MenuItem value="active">Active</MenuItem>
+                      <MenuItem value="inactive">Inactive</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    fullWidth
+                    placeholder="Search by name, email"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    InputProps={{
+                      startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                    }}
+                    size="small"
+                  />
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<CloseIcon />}
+                    onClick={() => {
+                      setSearchQuery('');
+                      setRoleFilter('all');
+                      setStatusFilter('all');
+                    }}
+                  >
+                    Clear Filters
+                  </Button>
+                </Grid>
+              </Grid>
+
+              {/* Users Table */}
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: '20%' }}>User</TableCell>
                   <TableCell sx={{ width: '25%' }}>Email</TableCell>
-                  <TableCell>Role</TableCell>
-                  {/* <TableCell>Company</TableCell> */}
-                  <TableCell>Status</TableCell>
+                  <TableCell sx={{ width: '20%' }}>Role</TableCell>
+                  <TableCell sx={{ width: '15%' }}>Status</TableCell>
                   <TableCell
                     align="center"
                     sx={{
@@ -427,7 +581,6 @@ const UserManagementPage = () => {
                               size="small"
                             />
                           </TableCell>
-                          {/* <TableCell>{safeUser.company || 'N/A'}</TableCell> */}
                           <TableCell>
                             <Chip
                               label={safeUser.is_active ? 'Active' : 'Inactive'}
@@ -444,13 +597,13 @@ const UserManagementPage = () => {
                               >
                                 {safeUser.is_active ? <LockIcon /> : <UnlockIcon />}
                               </IconButton>
-                              <IconButton
+                              {/* <IconButton
                                 size="small"
                                 onClick={() => handleSendPasswordReset(safeUser.email)}
                                 color="info"
                               >
                                 <EmailIcon />
-                              </IconButton>
+                              </IconButton> */}
                               <IconButton
                                 size="small"
                                 onClick={() => handleDialogOpen('edit', safeUser)}
@@ -471,7 +624,7 @@ const UserManagementPage = () => {
                     })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} align="center">No users found</TableCell>
+                    <TableCell colSpan={5} align="center">No users found</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -527,10 +680,157 @@ const UserManagementPage = () => {
               setPage(0);
             }}
           />
+            </>
+          )}
+
+          {/* Invitation Codes Tab */}
+          {activeTab === 1 && (
+            <>
+              {/* Invitation Codes Table */}
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ width: '20%' }}>Code</TableCell>
+                      <TableCell sx={{ width: '25%' }}>Target Email</TableCell>
+                      <TableCell sx={{ width: '15%' }}>Status</TableCell>
+                      <TableCell sx={{ width: '15%' }}>Expires At</TableCell>
+                      <TableCell sx={{ width: '15%' }}>Used By</TableCell>
+                      <TableCell align="center" sx={{ width: '10%' }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {loadingCodes ? (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                          <CircularProgress />
+                        </TableCell>
+                      </TableRow>
+                    ) : Array.isArray(invitationCodes) && invitationCodes.length > 0 ? (
+                      invitationCodes.map((code, index) => {
+                        const now = new Date();
+                        const expiresAt = new Date(code.expires_at);
+                        const isExpired = now > expiresAt;
+                        const getCodeStatus = () => {
+                          if (code.is_used) return { label: 'Used', color: 'default' };
+                          if (isExpired) return { label: 'Expired', color: 'error' };
+                          return { label: 'Valid', color: 'success' };
+                        };
+                        const status = getCodeStatus();
+
+                        return (
+                          <TableRow key={code.id}>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography 
+                                  sx={{ 
+                                    fontFamily: 'monospace', 
+                                    fontWeight: 600,
+                                    letterSpacing: 1 
+                                  }}
+                                >
+                                  {code.code}
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell>{code.email || '—'}</TableCell>
+                            <TableCell>
+                              <Chip
+                                label={status.label}
+                                color={status.color}
+                                size="small"
+                              />
+                            </TableCell>
+                            <TableCell>{new Date(code.expires_at).toLocaleDateString()}</TableCell>
+                            <TableCell>{code.used_by_name || '—'}</TableCell>
+                            <TableCell align="center">
+                              <Tooltip title={copiedCode === index ? 'Copied!' : 'Copy code'}>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => copyToClipboard(code.code, index)}
+                                  color={copiedCode === index ? 'success' : 'default'}
+                                >
+                                  {copiedCode === index ? <CheckIcon /> : <CopyIcon />}
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center">No invitation codes generated yet</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                <Button
+                  startIcon={<RefreshIcon />}
+                  onClick={loadInvitationCodes}
+                  disabled={loadingCodes}
+                >
+                  Refresh
+                </Button>
+              </Box>
+            </>
+          )}
         </Box>
       </Paper>
 
-      {/* User Dialog */}
+      {/* Invitation Code Dialog */}
+      <Dialog open={invitationDialogOpen} onClose={() => setInvitationDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Generate Invitation Code
+          <IconButton
+            onClick={() => setInvitationDialogOpen(false)}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Target Email (Optional)"
+              type="email"
+              placeholder="Leave blank to allow any email"
+              value={invitationFormData.email}
+              onChange={(e) => setInvitationFormData({
+                ...invitationFormData,
+                email: e.target.value
+              })}
+              helperText="If set, only users with this email can use the code"
+            />
+            <TextField
+              fullWidth
+              type="number"
+              label="Valid For (Days)"
+              value={invitationFormData.days_valid}
+              onChange={(e) => setInvitationFormData({
+                ...invitationFormData,
+                days_valid: parseInt(e.target.value) || 7
+              })}
+              inputProps={{ min: 1, max: 365 }}
+              helperText="Code will expire after this many days"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInvitationDialogOpen(false)} disabled={loading}>Cancel</Button>
+          <Button 
+            onClick={handleCreateInvitationCode} 
+            variant="contained" 
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={20} /> : undefined}
+          >
+            {loading ? 'Generating...' : 'Generate Code'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={dialogOpen} onClose={handleDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle>
           {dialogMode === 'create' ? 'Create New User' : 'Edit User'}

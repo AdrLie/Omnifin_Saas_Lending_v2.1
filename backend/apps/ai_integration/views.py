@@ -18,7 +18,7 @@ from apps.ai_integration.serializers import (
     ChatMessageSerializer, VoiceUploadSerializer
 )
 from apps.ai_integration.services import AIChatService, VoiceService
-from apps.authentication.permissions import IsAdmin, IsSuperAdmin
+from apps.authentication.permissions import IsSystemAdmin
 import traceback
 import logging
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 class PromptViewSet(viewsets.ModelViewSet):
     """Prompt management ViewSet"""
-    permission_classes = [IsSuperAdmin]
+    permission_classes = [IsSystemAdmin]
     
     queryset = Prompt.objects.all()
     
@@ -55,7 +55,7 @@ class PromptViewSet(viewsets.ModelViewSet):
 
 class KnowledgeViewSet(viewsets.ModelViewSet):
     """Knowledge base management ViewSet"""
-    permission_classes = [IsSuperAdmin]
+    permission_classes = [IsSystemAdmin]
     
     queryset = Knowledge.objects.all()
     
@@ -89,7 +89,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user    
-        if hasattr(user, 'is_superadmin') and user.is_superadmin or hasattr(user, 'is_admin') and user.is_admin:
+        if user.is_system_admin or user.is_tpb_manager or user.is_tpb_staff:
             return Conversation.objects.all()
         else:
             return Conversation.objects.filter(user=user)
@@ -348,7 +348,7 @@ def get_user_conversations(request):
         offset = int(request.query_params.get('offset', 0))
         
         # Base queryset
-        if user.is_superadmin or user.is_admin:
+        if user.is_system_admin or user.is_tpb_manager or user.is_tpb_staff:
             conversations = Conversation.objects.all()
         else:
             conversations = Conversation.objects.filter(user=user)
@@ -420,7 +420,7 @@ def get_conversation_messages(request, conversation_id):
         user = request.user
         
         # Get conversation and verify ownership
-        if user.is_superadmin or user.is_admin:
+        if user.is_system_admin or user.is_tpb_manager or user.is_tpb_staff:
             conversation = get_object_or_404(Conversation, id=conversation_id)
         else:
             conversation = get_object_or_404(Conversation, id=conversation_id, user=user)
@@ -457,7 +457,7 @@ def delete_conversation(request, conversation_id):
         user = request.user
         
         # Get conversation and verify ownership
-        if user.is_superadmin or user.is_admin:
+        if user.is_system_admin or user.is_tpb_manager or user.is_tpb_staff:
             conversation = get_object_or_404(Conversation, id=conversation_id)
         else:
             conversation = get_object_or_404(Conversation, id=conversation_id, user=user)
@@ -492,10 +492,10 @@ def ai_dashboard(request):
         user = request.user
         
         # Filter conversations based on user role
-        if hasattr(user, 'is_superadmin') and user.is_superadmin:
+        if user.is_system_admin:
             conversations = Conversation.objects.all()
             messages = Message.objects.all()
-        elif hasattr(user, 'is_admin') and user.is_admin:
+        elif user.is_tpb_manager or user.is_tpb_staff:
             conversations = Conversation.objects.all()
             messages = Message.objects.all()
         else:

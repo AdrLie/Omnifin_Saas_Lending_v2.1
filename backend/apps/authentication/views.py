@@ -14,13 +14,14 @@ from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from apps.authentication.models import User, TPBProfile, ApplicantProfile
+from apps.authentication.models import User, TPBProfile, ApplicantProfile, Organization, InvitationCode
 from apps.authentication.serializers import (
     UserSerializer, UserRegistrationSerializer, UserLoginSerializer,
     PasswordChangeSerializer, TPBProfileSerializer, TPBProfileCreateSerializer,
-    ApplicantProfileSerializer, ApplicantProfileCreateSerializer
+    ApplicantProfileSerializer, ApplicantProfileCreateSerializer,
+    InvitationCodeSerializer, InvitationCodeCreateSerializer
 )
-from apps.authentication.permissions import IsAdmin, IsSuperAdmin, IsTPB
+from apps.authentication.permissions import IsSystemAdmin, IsTPBManager, IsTPBStaff, IsTPBCustomer, IsTPBWorkspaceUser
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -35,11 +36,6 @@ class UserRegistrationView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        
-        # Auto-assign group_id for admin users
-        if user.role in ['admin', 'superadmin'] and not user.group_id:
-            user.group_id = user.id  # Use their own user ID as group ID
-            user.save()
         
         # Create token
         token, created = Token.objects.get_or_create(user=user)
@@ -279,11 +275,11 @@ class ApplicantProfileView(generics.RetrieveUpdateAPIView):
 
 
 class UserManagementView(generics.GenericAPIView):
-    """User management view for admins and system admins"""
-    permission_classes = [IsAdmin]
+    """User management view for system admin and TPB managers"""
+    permission_classes = [IsSystemAdmin | IsTPBManager]
     
     def get(self, request, *args, **kwargs):
-        # System admin can see all users, regular admin sees their group
+        # System admin can see all users, TPB manager sees their workspace group
         if request.user.is_system_admin:
             users = User.objects.all()
         else:
@@ -300,7 +296,7 @@ class UserManagementView(generics.GenericAPIView):
         user = serializer.save()
         user.created_by = request.user
         
-        # System admin creates standalone users, regular admin creates for their group
+        # System admin creates standalone users, TPB manager creates for their workspace
         if not request.user.is_system_admin and request.user.group_id:
             user.group_id = request.user.group_id
         
@@ -310,12 +306,12 @@ class UserManagementView(generics.GenericAPIView):
 
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """User detail view for admins and system admins"""
+    """User detail view for system admin and TPB managers"""
     serializer_class = UserSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsSystemAdmin | IsTPBManager]
     
     def get_queryset(self):
-        # System admin can see all users, regular admin sees their group
+        # System admin can see all users, TPB manager sees their workspace group
         if self.request.user.is_system_admin:
             return User.objects.all()
         return User.objects.filter(group_id=self.request.user.group_id)
@@ -336,9 +332,9 @@ def get_user_info(request):
     }
     
     # Add role-specific information
-    if user.is_tpb and hasattr(user, 'tpb_profile'):
+    if user.is_tpb_manager and hasattr(user, 'tpb_profile'):
         data['tpb_profile'] = TPBProfileSerializer(user.tpb_profile).data
-    elif user.role == 'applicant' and hasattr(user, 'applicant_profile'):
+    elif user.role == 'tpb_customer' and hasattr(user, 'applicant_profile'):
         data['applicant_profile'] = ApplicantProfileSerializer(user.applicant_profile).data
     
     return Response(data)
@@ -586,8 +582,8 @@ class UserActivityViewSet(viewsets.ModelViewSet):
         date_from = self.request.query_params.get('date_from', None)
         date_to = self.request.query_params.get('date_to', None)
         
-        # Admin/Superadmin can see all activities, others see only their own
-        if not (user.is_admin or user.is_superadmin):
+        # Admin/System admin can see all activities, others see only their own
+        if not (user.is_system_admin or user.is_tpb_manager):
             queryset = queryset.filter(user=user)
         elif user_id:
             queryset = queryset.filter(user_id=user_id)
@@ -627,3 +623,112 @@ class UserActivityViewSet(viewsets.ModelViewSet):
         else:
             ip = self.request.META.get('REMOTE_ADDR')
         return ip
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def list_organizations(request):
+    """List available organizations for applicants to join"""
+    try:
+        organizations = Organization.objects.filter(is_active=True).select_related('owner').values(
+            'id', 'name', 'description', 'owner__email', 'owner__first_name', 'owner__last_name'
+        )
+        
+        org_list = []
+        for org in organizations:
+            org_list.append({
+                'id': str(org['id']),
+                'name': org['name'],
+                'description': org['description'],
+                'owner': f"{org['owner__first_name']} {org['owner__last_name']}".strip(),
+                'owner_email': org['owner__email'],
+            })
+        
+        return Response({
+            'success': True,
+            'organizations': org_list
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class InvitationCodeCreateView(generics.CreateAPIView):
+    """Generate invitation codes for organization (TPB Manager only)"""
+    serializer_class = InvitationCodeCreateSerializer
+    permission_classes = [permissions.IsAuthenticated, IsTPBManager]
+    
+    def get_organization(self):
+        """Get organization owned by current user"""
+        try:
+            return Organization.objects.get(owner=self.request.user)
+        except Organization.DoesNotExist:
+            raise serializers.ValidationError("You don't have an organization")
+    
+    def create(self, request, *args, **kwargs):
+        organization = self.get_organization()
+        serializer = self.get_serializer(data=request.data)
+        serializer.context['organization'] = organization
+        serializer.is_valid(raise_exception=True)
+        inv_code = serializer.save()
+        
+        return Response(InvitationCodeSerializer(inv_code).data, status=status.HTTP_201_CREATED)
+
+
+class InvitationCodeListView(generics.ListAPIView):
+    """List all invitation codes for an organization (TPB Manager only)"""
+    serializer_class = InvitationCodeSerializer
+    permission_classes = [permissions.IsAuthenticated, IsTPBManager]
+    
+    def get_queryset(self):
+        """Get codes for user's organization"""
+        try:
+            org = Organization.objects.get(owner=self.request.user)
+            return InvitationCode.objects.filter(organization=org).order_by('-created_at')
+        except Organization.DoesNotExist:
+            return InvitationCode.objects.none()
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_current_organization(request):
+    """Get the current user's organization"""
+    try:
+        # Get organization by group_id
+        organization = Organization.objects.get(group_id=request.user.group_id)
+        return Response({
+            'id': str(organization.id),
+            'group_id': str(organization.group_id),
+            'name': organization.name,
+            'description': organization.description,
+            'owner': organization.owner.email,
+            'is_active': organization.is_active,
+            'created_at': organization.created_at,
+            'updated_at': organization.updated_at
+        }, status=status.HTTP_200_OK)
+    except Organization.DoesNotExist:
+        # If no organization found by group_id, try to get by owner
+        try:
+            organization = Organization.objects.get(owner=request.user)
+            return Response({
+                'id': str(organization.id),
+                'group_id': str(organization.group_id),
+                'name': organization.name,
+                'description': organization.description,
+                'owner': organization.owner.email,
+                'is_active': organization.is_active,
+                'created_at': organization.created_at,
+                'updated_at': organization.updated_at
+            }, status=status.HTTP_200_OK)
+        except Organization.DoesNotExist:
+            return Response(
+                {'error': 'No organization found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )

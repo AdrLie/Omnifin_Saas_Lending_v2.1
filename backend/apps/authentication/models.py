@@ -32,17 +32,16 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     """Custom User model with email as unique identifier"""
     ROLE_CHOICES = [
-        ('applicant', _('Applicant')),
-        ('tpb', _('Third-Party Broker')),
-        ('admin', _('Admin')),
-        ('superadmin', _('SuperAdmin')),
         ('system_admin', _('System Admin')),
+        ('tpb_manager', _('TPB Manager')),
+        ('tpb_staff', _('TPB Staff')),
+        ('tpb_customer', _('TPB Customer')),
     ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(_('email address'), unique=True)
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='applicant')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='tpb_customer')
     phone = models.CharField(max_length=20, blank=True, null=True)
     is_verified = models.BooleanField(default=False)
     created_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True)
@@ -79,16 +78,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.first_name or self.email
 
     @property
-    def is_tpb(self):
-        return self.role == 'tpb'
+    def is_tpb_manager(self):
+        return self.role == 'tpb_manager'
 
     @property
-    def is_admin(self):
-        return self.role in ['admin', 'superadmin']
+    def is_tpb_staff(self):
+        return self.role == 'tpb_staff'
 
     @property
-    def is_superadmin(self):
-        return self.role == 'superadmin'
+    def is_tpb_customer(self):
+        return self.role == 'tpb_customer'
 
     @property
     def is_system_admin(self):
@@ -121,6 +120,77 @@ class TPBProfile(models.Model):
         if not self.tracking_id:
             self.tracking_id = f"TPB{uuid.uuid4().hex[:8].upper()}"
         super().save(*args, **kwargs)
+
+
+class Organization(models.Model):
+    """Organization/Workspace owned by TPB Manager"""
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(unique=True, help_text="Unique group identifier for this organization")
+    name = models.CharField(max_length=255, help_text="Organization name")
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_organizations', 
+                              limit_choices_to={'role': 'tpb_manager'})
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'organizations'
+        indexes = [
+            models.Index(fields=['group_id']),
+            models.Index(fields=['owner']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} - {self.owner.email}"
+
+
+class InvitationCode(models.Model):
+    """One-time use invitation codes for applicants to join organizations"""
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='invitation_codes')
+    code = models.CharField(max_length=10, unique=True, db_index=True, help_text="Unique invitation code")
+    email = models.EmailField(blank=True, null=True, help_text="Email address this code is for (optional)")
+    is_used = models.BooleanField(default=False)
+    used_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='joined_via_code')
+    used_at = models.DateTimeField(blank=True, null=True)
+    expires_at = models.DateTimeField(help_text="When this code expires")
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'invitation_codes'
+        indexes = [
+            models.Index(fields=['code']),
+            models.Index(fields=['organization']),
+            models.Index(fields=['is_used']),
+        ]
+        verbose_name = 'Invitation Code'
+        verbose_name_plural = 'Invitation Codes'
+    
+    def __str__(self):
+        return f"{self.code} - {self.organization.name} ({self.organization.owner.email})"
+    
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
+    
+    @property
+    def is_valid(self):
+        """Check if code is valid (not used and not expired)"""
+        return not self.is_used and not self.is_expired
+    
+    @staticmethod
+    def generate_code():
+        """Generate a unique 10-character code"""
+        import string
+        import random
+        while True:
+            code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+            if not InvitationCode.objects.filter(code=code).exists():
+                return code
 
 
 class ApplicantProfile(models.Model):

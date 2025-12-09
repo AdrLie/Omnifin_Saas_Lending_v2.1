@@ -45,10 +45,10 @@ export const STATUS_COLORS = {
 
 // User Roles
 export const USER_ROLES = {
-  APPLICANT: 'applicant',
-  TPB: 'tpb',
-  ADMIN: 'admin',
-  SUPERADMIN: 'superadmin',
+  SYSTEM_ADMIN: 'system_admin',
+  TPB_MANAGER: 'tpb_manager',
+  TPB_STAFF: 'tpb_staff',
+  TPB_CUSTOMER: 'tpb_customer',
 };
 
 // Loan Purposes
@@ -127,8 +127,9 @@ export const ROUTES = {
   USERS: '/admin/users',
   ADD_USER: '/users/add',
   MODIFY_PERMISSIONS: '/users/permissions',
-  ANALYTICS: 'admin/analytics',
+  ANALYTICS: '/admin/analytics',
   LOANS: '/admin/loans',
+  LOAN_MANAGEMENT: '/loan-management',
   ADMIN: '/admin',
   CONFIG: '/config',
   PROMPTS: '/prompts',

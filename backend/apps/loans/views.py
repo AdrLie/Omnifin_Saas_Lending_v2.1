@@ -11,13 +11,13 @@ from apps.loans.serializers import (
     ApplicationStatusHistorySerializer, ApplicationProgressSerializer, StepCompletionSerializer
 )
 from apps.loans.services import ApplicationService, LenderService, OfferService
-from apps.authentication.permissions import IsAdmin, IsSuperAdmin, IsTPB
+from apps.authentication.permissions import IsSystemAdmin, IsTPBManager, IsTPBWorkspaceUser, HasActiveSubscription
 from django.db import models
 
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     """Application ViewSet"""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasActiveSubscription]
     queryset = Application.objects.all().order_by('-created_at')
     pagination_class = CustomPageNumberPagination
 
@@ -36,9 +36,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         # Base queryset based on user role
-        if user.is_superadmin or user.is_admin or user.is_tpb:
+        if user.is_system_admin:
             queryset = Application.objects.all()
-        elif user.role == 'applicant':
+        elif user.is_tpb_manager or user.is_tpb_staff:
+            # TPB managers/staff only see loans from their organization
+            queryset = Application.objects.filter(group_id=user.group_id)
+        elif user.role == 'tpb_customer':
             queryset = Application.objects.filter(applicant=user.applicant_profile)
         else:
             return Application.objects.none()
@@ -92,6 +95,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         application = serializer.save()
         
+        # Auto-assign group_id from applicant's group
+        if not application.group_id and application.applicant and application.applicant.user:
+            application.group_id = application.applicant.user.group_id
+            application.save()
+        
         # Log activity
         from apps.authentication.activity_utils import log_activity
         log_activity(
@@ -127,7 +135,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         serializer.save()
         
         # Log activity for TPB user who updates the application
-        if hasattr(self.request.user, 'tpb_profile'):
+        if self.request.user.is_tpb_manager or self.request.user.is_tpb_staff or self.request.user.is_system_admin:
             updated_fields = list(serializer.validated_data.keys())
             
             log_activity(
@@ -185,7 +193,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         )
         
         # Log activity for TPB user
-        if hasattr(request.user, 'tpb_profile'):
+        if request.user.is_tpb_manager or request.user.is_tpb_staff or request.user.is_system_admin:
             from apps.authentication.activity_utils import log_activity
             log_activity(
                 user=request.user,
@@ -236,8 +244,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         """Complete a specific step in the application process"""
         application = self.get_object()
         
-        # Check permissions - only admin/superadmin/TPB can complete steps
-        if not (request.user.is_admin or request.user.is_superadmin or hasattr(request.user, 'tpb_profile')):
+        # Check permissions - only system_admin/tpb_manager/tpb_staff can complete steps
+        if not (request.user.is_system_admin or request.user.is_tpb_manager or request.user.is_tpb_staff):
             return Response(
                 {'error': 'You do not have permission to complete steps'},
                 status=status.HTTP_403_FORBIDDEN
@@ -267,7 +275,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         progress.complete_step(step, user=request.user, notes=notes, **step_data)
         
         # Log activity for TPB user
-        if hasattr(request.user, 'tpb_profile'):
+        if request.user.is_tpb_manager or request.user.is_tpb_staff or request.user.is_system_admin:
             from apps.authentication.activity_utils import log_activity
             
             step_names = {
@@ -308,7 +316,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='progress/set-step')
     def set_current_step(self, request, pk=None):
         """Manually set current step (admin/TPB only)"""
-        if not (request.user.is_admin or request.user.is_superadmin or hasattr(request.user, 'tpb_profile')):
+        if not (request.user.is_system_admin or request.user.is_tpb_manager or request.user.is_tpb_staff):
             return Response(
                 {'error': 'Only admins and TPB users can manually set steps'},
                 status=status.HTTP_403_FORBIDDEN
@@ -350,7 +358,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             app_service.update_application_status(application, 'funded', notes, request.user)
         
         # Log activity for TPB user when navigating steps
-        if hasattr(request.user, 'tpb_profile'):
+        if request.user.is_tpb_manager or request.user.is_tpb_staff or request.user.is_system_admin:
             from apps.authentication.activity_utils import log_activity
             
             step_names = {
@@ -391,7 +399,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         application = self.get_object()
         
         # Only allow deletion if status is pending or the user is admin
-        if application.status not in ['pending', 'cancelled'] and not (request.user.is_admin or request.user.is_superadmin):
+        if application.status not in ['pending', 'cancelled'] and not (request.user.is_tpb_manager or request.user.is_system_admin):
             return Response(
                 {'error': 'Cannot delete application that is not in pending status'},
                 status=status.HTTP_403_FORBIDDEN
@@ -414,7 +422,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         """
         # Permission check: only admin / superadmin can do this
         user = request.user
-        if not (user.is_superadmin or user.is_admin):
+        if not (user.is_system_admin or user.is_tpb_manager):
             return Response({'error': 'Only admins and superadmins can clear all loans'}, status=status.HTTP_403_FORBIDDEN)
 
         confirm = request.data.get('confirm')
@@ -482,7 +490,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
 class LenderViewSet(viewsets.ModelViewSet):
     """Lender ViewSet"""
-    permission_classes = [IsSuperAdmin]
+    permission_classes = [IsSystemAdmin]
     queryset = Lender.objects.all()
     
     def get_serializer_class(self):
@@ -514,11 +522,9 @@ class LoanOfferViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
-        if user.is_superadmin or user.is_admin:
+        if user.is_system_admin or user.is_tpb_manager or user.is_tpb_staff:
             return LoanOffer.objects.all()
-        elif hasattr(user, 'tpb_profile'):
-            return LoanOffer.objects.filter(application__tpb=user.tpb_profile)
-        elif hasattr(user, 'applicant_profile'):
+        elif user.role == 'tpb_customer':
             return LoanOffer.objects.filter(application__applicant=user.applicant_profile)
         else:
             return LoanOffer.objects.none()
@@ -552,10 +558,10 @@ def application_dashboard(request):
     """Get application dashboard data"""
     user = request.user
     
-    if user.is_superadmin or user.is_admin:
+    if user.is_system_admin or user.is_tpb_manager or user.is_tpb_staff:
         applications = Application.objects.all()
-    elif user.is_tpb:
-        applications = Application.objects.filter(tpb=user.tpb_profile)
+    elif user.role == 'tpb_customer':
+        applications = Application.objects.filter(applicant=user.applicant_profile)
     else:
         applications = Application.objects.filter(applicant=user.applicant_profile)
     

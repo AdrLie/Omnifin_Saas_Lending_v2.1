@@ -9,7 +9,8 @@ from apps.authentication.views import (
     UserProfileView, TPBProfileView, ApplicantProfileView, UserManagementView,
     UserDetailView, get_user_info, verify_email, password_reset_request,
     password_reset_confirm, UserActivityViewSet, enable_mfa, verify_mfa_setup,
-    disable_mfa, verify_mfa_login
+    disable_mfa, verify_mfa_login, list_organizations, InvitationCodeCreateView,
+    InvitationCodeListView, get_current_organization
 )
 
 app_name = 'authentication'
@@ -42,6 +43,12 @@ urlpatterns = [
     # Utility endpoints
     path('me/', get_user_info, name='user_info'),
     path('verify-email/', verify_email, name='verify_email'),
+    path('organizations/', list_organizations, name='list_organizations'),
+    path('organization/current/', get_current_organization, name='current_organization'),
+    
+    # Invitation codes
+    path('invitation-codes/', InvitationCodeListView.as_view(), name='invitation_code_list'),
+    path('invitation-codes/create/', InvitationCodeCreateView.as_view(), name='invitation_code_create'),
     
     # Two-Factor Authentication
     path('mfa/enable/', enable_mfa, name='enable_mfa'),

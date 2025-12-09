@@ -4,6 +4,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline, Box, CircularProgress } from '@mui/material';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ChatProvider } from './contexts/ChatContext';
+import { SubscriptionProvider } from './contexts/SubscriptionContext';
 import Layout from './components/Layout';
 import HomePage from './screens/HomePage';
 import LoginPage from './screens/LoginPage';
@@ -131,7 +132,8 @@ function App() {
       <AuthProvider>
         <ChatProvider>
           <UserProvider>
-            <Router>
+            <SubscriptionProvider>
+              <Router>
               <Routes>
                 {/* Public Routes */}
                 <Route path="/login" element={<LoginPage />} />
@@ -150,49 +152,49 @@ function App() {
 
                   {/* Admin Routes */}
                   <Route path="admin/config" element={
-                    <RoleBasedRoute allowedRoles={['super_admin']}>
+                    <RoleBasedRoute allowedRoles={['system_admin']}>
                       <SuperAdminConfigPage />
                     </RoleBasedRoute>
                   } />
                   <Route path="admin/prompts" element={
-                    <RoleBasedRoute allowedRoles={['super_admin', 'admin']}>
+                    <RoleBasedRoute allowedRoles={['system_admin']}>
                       <PromptManagementPage />
                     </RoleBasedRoute>
                   } />
                   <Route path="admin/knowledge" element={
-                    <RoleBasedRoute allowedRoles={['super_admin', 'admin']}>
+                    <RoleBasedRoute allowedRoles={['system_admin']}>
                       <KnowledgeBankPage />
                     </RoleBasedRoute>
                   } />
                   <Route path="admin/users" element={
-                    <RoleBasedRoute allowedRoles={['super_admin', 'admin']}>
+                    <RoleBasedRoute allowedRoles={['system_admin', 'tpb_manager']}>
                       <UserManagementPage />
                     </RoleBasedRoute>
                   } />
                   <Route path="admin/analytics" element={
-                    <RoleBasedRoute allowedRoles={['super_admin', 'admin']}>
+                    <RoleBasedRoute allowedRoles={['system_admin', 'tpb_manager']}>
                       <AnalyticsPage />
                     </RoleBasedRoute>
                   } />
                   <Route path="admin/loans" element={
-                    <RoleBasedRoute allowedRoles={['super_admin', 'admin', 'tpb']}>
+                    <RoleBasedRoute allowedRoles={['system_admin', 'tpb_manager', 'tpb_staff']}>
                       <LoanManagementPage />
                     </RoleBasedRoute>
                   } />
 
                   {/* Subscription Routes */}
                   <Route path="subscription-plans" element={
-                    <RoleBasedRoute allowedRoles={['super_admin', 'admin']}>
+                    <RoleBasedRoute allowedRoles={['system_admin', 'tpb_manager']}>
                       <SubscriptionPlansScreen />
                     </RoleBasedRoute>
                   } />
                   <Route path="manage-admin-subscriptions" element={
-                    <RoleBasedRoute allowedRoles={['super_admin']}>
+                    <RoleBasedRoute allowedRoles={['system_admin']}>
                       <ManageAdminSubscriptionsScreen />
                     </RoleBasedRoute>
                   } />
                   <Route path="subscribe" element={
-                    <RoleBasedRoute allowedRoles={['admin']}>
+                    <RoleBasedRoute allowedRoles={['tpb_manager']}>
                       <SubscribeScreen />
                     </RoleBasedRoute>
                   } />
@@ -208,6 +210,7 @@ function App() {
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </Router>
+            </SubscriptionProvider>
           </UserProvider>
         </ChatProvider>
       </AuthProvider>

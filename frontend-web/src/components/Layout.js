@@ -32,13 +32,8 @@ import {
   Description,
   Settings,
   Logout,
-  AdminPanelSettings,
-  Psychology,
-  School,
   CreditCard,
-  Assessment,
-  Subscriptions,
-  SupervisorAccount,
+  TrendingUp,
 } from '@mui/icons-material';
 import { AuthContext } from '../contexts/AuthContext';
 import { ROUTES } from '../utils/constants';
@@ -70,52 +65,50 @@ const Layout = () => {
   };
 
   const getNavigationItems = () => {
-    const baseItems = [
+    // System Admin - manages entire platform
+    const systemAdminItems = [
+      { text: 'System Admin Panel', icon: <Settings />, path: ROUTES.ADMIN_DASHBOARD },
+      { text: 'Profile', icon: <Person />, path: ROUTES.PROFILE },
+    ];
+
+    // TPB Manager - manages workspace subscriptions and staff
+    const tpbManagerItems = [
+      { text: 'Dashboard', icon: <Dashboard />, path: ROUTES.HOME },
+      { text: 'Manage Team', icon: <Group />, path: ROUTES.USERS },
+      { text: 'Loan Management', icon: <Description />, path: ROUTES.LOANS },
+      { text: 'Token Usage', icon: <TrendingUp />, path: ROUTES.USAGE },
+      { text: 'Subscriptions', icon: <CreditCard />, path: ROUTES.SUBSCRIBE },
+      { text: 'Analytics', icon: <Analytics />, path: ROUTES.ANALYTICS },
+      { text: 'Profile', icon: <Person />, path: ROUTES.PROFILE },
+    ];
+
+    // TPB Staff - lender that provides funds
+    const tpbStaffItems = [
+      { text: 'Dashboard', icon: <Dashboard />, path: ROUTES.HOME },
+      { text: 'Loan Management', icon: <Description />, path: ROUTES.LOANS },
+      { text: 'Token Usage', icon: <TrendingUp />, path: ROUTES.USAGE },
+      { text: 'AI Chat', icon: <Chat />, path: ROUTES.CHAT },
+      { text: 'Profile', icon: <Person />, path: ROUTES.PROFILE },
+    ];
+
+    // TPB Customer - wants to borrow
+    const tpbCustomerItems = [
       { text: 'Dashboard', icon: <Dashboard />, path: ROUTES.HOME },
       { text: 'AI Chat', icon: <Chat />, path: ROUTES.CHAT },
       { text: 'Voice Chat', icon: <Mic />, path: ROUTES.VOICE_CHAT },
       { text: 'Profile', icon: <Person />, path: ROUTES.PROFILE },
     ];
 
-    const adminItems = [
-      { text: 'User Management', icon: <Group />, path: ROUTES.USERS },
-      { text: 'Analytics', icon: <Analytics />, path: ROUTES.ANALYTICS },
-      { text: 'Loan Management', icon: <Description />, path: ROUTES.LOANS },
-      { text: 'Subscribe', icon: <CreditCard />, path: ROUTES.SUBSCRIBE },
-      { text: 'Usage Dashboard', icon: <Assessment />, path: ROUTES.USAGE },
-    ];
+    let items = [];
 
-    // For tbp, only show Analytics and Loan Management
-    const tpbItems = [
-      { text: 'Loan Management', icon: <Description />, path: ROUTES.LOANS },
-    ];
-
-    const superAdminItems = [
-      { text: 'System Config', icon: <Settings />, path: ROUTES.CONFIG },
-      { text: 'Prompt Management', icon: <Psychology />, path: ROUTES.PROMPTS },
-      { text: 'Knowledge Bank', icon: <School />, path: ROUTES.KNOWLEDGE },
-      { text: 'Admin Dashboard', icon: <AdminPanelSettings />, path: ROUTES.ADMIN },
-      { text: 'Subscription Plans', icon: <Subscriptions />, path: ROUTES.SUBSCRIPTION_PLANS },
-      { text: 'Manage Subscriptions', icon: <SupervisorAccount />, path: ROUTES.MANAGE_ADMIN_SUBSCRIPTIONS },
-    ];
-
-    const systemAdminItems = [
-      { text: 'System Admin Panel', icon: <Settings />, path: ROUTES.ADMIN_DASHBOARD },
-      { text: 'Profile', icon: <Person />, path: ROUTES.PROFILE },
-    ];
-
-    let items = [...baseItems];
-
-    if (user?.role === 'admin' || user?.role === 'superadmin') {
-      items = [...items, ...adminItems];
-    } else if (user?.role === 'tpb') {
-      items = [...items, ...tpbItems];
-    } else if (user?.role === 'system_admin') {
-      items = [...systemAdminItems];
-    }
-
-    if (user?.role === 'superadmin') {
-      items = [...items, ...superAdminItems];
+    if (user?.role === 'system_admin') {
+      items = systemAdminItems;
+    } else if (user?.role === 'tpb_manager') {
+      items = tpbManagerItems;
+    } else if (user?.role === 'tpb_staff') {
+      items = tpbStaffItems;
+    } else if (user?.role === 'tpb_customer') {
+      items = tpbCustomerItems;
     }
 
     return items;
