@@ -31,6 +31,7 @@ import {
   Add as AddIcon,
 } from '@mui/icons-material';
 import adminService from '../../services/adminService';
+import ConfirmationModal from '../ConfirmationModal';
 
 const UserManagementTab = () => {
   const [users, setUsers] = useState([]);
@@ -41,11 +42,16 @@ const UserManagementTab = () => {
     email: '',
     first_name: '',
     last_name: '',
-    role: 'applicant',
+    role: 'tpb_customer',
+    password: '',
+    password_confirm: '',
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -81,7 +87,9 @@ const UserManagementTab = () => {
         email: '',
         first_name: '',
         last_name: '',
-        role: 'applicant',
+        role: 'tpb_customer',
+        password: '',
+        password_confirm: '',
       });
     }
     setOpenDialog(true);
@@ -108,15 +116,33 @@ const UserManagementTab = () => {
       return;
     }
 
+    // For new users, password is required
+    if (!editingUser) {
+      if (!formData.password || !formData.password_confirm) {
+        setError('Password and password confirmation are required');
+        return;
+      }
+      if (formData.password !== formData.password_confirm) {
+        setError('Passwords do not match');
+        return;
+      }
+    }
+
     try {
       setSubmitting(true);
 
       if (editingUser) {
-        // Update user
-        await adminService.updateUser(editingUser.id, formData);
+        // Update user - don't send password fields when updating
+        const updateData = {
+          email: formData.email,
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          role: formData.role,
+        };
+        await adminService.updateUser(editingUser.id, updateData);
         setSuccess('User updated successfully');
       } else {
-        // Create user
+        // Create user - send all fields including passwords
         await adminService.createUser(formData);
         setSuccess('User created successfully');
       }
@@ -131,15 +157,35 @@ const UserManagementTab = () => {
   };
 
   const handleDeleteUser = async (userId) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
-      try {
-        await adminService.deleteUser(userId);
-        setSuccess('User deleted successfully');
-        fetchUsers();
-      } catch (err) {
-        setError(err.response?.data?.detail || 'Failed to delete user');
-      }
+    const user = users.find(u => u.id === userId);
+    setUserToDelete(user);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    try {
+      setDeleteLoading(true);
+      setError('');
+      setSuccess('');
+      await adminService.deleteUser(userToDelete.id);
+      setSuccess('User deleted successfully!');
+      setDeleteModalOpen(false);
+      setUserToDelete(null);
+      // Refresh the user list after delete
+      await fetchUsers();
+    } catch (err) {
+      console.error('Delete error:', err);
+      const errorMsg = err.response?.data?.detail || err.response?.data?.error || 'Failed to delete user';
+      setError(errorMsg);
+    } finally {
+      setDeleteLoading(false);
     }
+  };
+
+  const cancelDelete = () => {
+    setDeleteModalOpen(false);
+    setUserToDelete(null);
   };
 
   const getRoleChip = (role) => {
@@ -292,6 +338,32 @@ const UserManagementTab = () => {
             margin="normal"
           />
 
+          {!editingUser && (
+            <>
+              <TextField
+                fullWidth
+                label="Password"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleInputChange}
+                margin="normal"
+                required
+              />
+
+              <TextField
+                fullWidth
+                label="Confirm Password"
+                name="password_confirm"
+                type="password"
+                value={formData.password_confirm}
+                onChange={handleInputChange}
+                margin="normal"
+                required
+              />
+            </>
+          )}
+
           <FormControl fullWidth margin="normal">
             <InputLabel>Role</InputLabel>
             <Select
@@ -300,11 +372,10 @@ const UserManagementTab = () => {
               onChange={handleInputChange}
               label="Role"
             >
-              <MenuItem value="applicant">Applicant</MenuItem>
-              <MenuItem value="admin">Admin</MenuItem>
-              <MenuItem value="superadmin">SuperAdmin</MenuItem>
+              <MenuItem value="tpb_customer">TPB Customer (Applicant)</MenuItem>
+              <MenuItem value="tpb_staff">TPB Staff</MenuItem>
+              <MenuItem value="tpb_manager">TPB Manager</MenuItem>
               <MenuItem value="system_admin">System Admin</MenuItem>
-              <MenuItem value="tpb">TPB</MenuItem>
             </Select>
           </FormControl>
         </DialogContent>
@@ -321,6 +392,26 @@ const UserManagementTab = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        open={deleteModalOpen}
+        title="Delete User"
+        message="Are you sure you want to delete this user?"
+        subMessage={
+          userToDelete
+            ? `${userToDelete.first_name || ''} ${userToDelete.last_name || ''}`.trim() ||
+              userToDelete.email
+            : ''
+        }
+        onConfirm={confirmDeleteUser}
+        onCancel={cancelDelete}
+        loading={deleteLoading}
+        confirmText="Delete user"
+        cancelText="Cancel"
+        confirmColor="error"
+        icon="delete"
+      />
     </Paper>
   );
 };

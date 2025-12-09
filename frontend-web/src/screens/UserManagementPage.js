@@ -48,6 +48,7 @@ import {
 import { useUser } from '../contexts/UserContext';
 import { SubscriptionContext } from '../contexts/SubscriptionContext';
 import { API_BASE_URL } from '../utils/constants';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 const UserManagementPage = () => {
   const { loadAllUsers, createUser, updateUser, deleteUser, sendPasswordReset } = useUser();
@@ -633,40 +634,24 @@ const UserManagementPage = () => {
           </TableContainer>
 
           {/* Delete Confirmation Modal */}
-          <Dialog
+          <ConfirmationModal
             open={deleteDialogOpen}
-            onClose={cancelDelete}
-            aria-labelledby="delete-user-dialog-title"
-            aria-describedby="delete-user-dialog-description"
-          >
-            <DialogTitle id="delete-user-dialog-title">Confirm user deletion</DialogTitle>
-            <DialogContent>
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', minWidth: 360 }}>
-                <Avatar sx={{ bgcolor: 'error.main' }}>
-                  <DeleteIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="subtitle1">Are you sure you want to delete this user?</Typography>
-                  <Typography variant="body2" color="text.secondary" id="delete-user-dialog-description">
-                    {userToDelete ? `${userToDelete.name || `${userToDelete.first_name || ''} ${userToDelete.last_name || ''}`.trim() || userToDelete.email || ''}` : ''}
-                    {userToDelete && userToDelete.email ? ` — ${userToDelete.email}` : ''}
-                  </Typography>
-                </Box>
-              </Box>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={cancelDelete} disabled={deleteLoading}>Cancel</Button>
-              <Button
-                onClick={confirmDeleteUser}
-                color="error"
-                variant="contained"
-                disabled={deleteLoading}
-                startIcon={deleteLoading ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
-              >
-                {deleteLoading ? 'Deleting...' : 'Delete user'}
-              </Button>
-            </DialogActions>
-          </Dialog>
+            title="Delete User"
+            message="Are you sure you want to delete this user?"
+            subMessage={
+              userToDelete
+                ? `${userToDelete.first_name || ''} ${userToDelete.last_name || ''}`.trim() ||
+                  userToDelete.email
+                : ''
+            }
+            onConfirm={confirmDeleteUser}
+            onCancel={cancelDelete}
+            loading={deleteLoading}
+            confirmText="Delete user"
+            cancelText="Cancel"
+            confirmColor="error"
+            icon="delete"
+          />
 
           {/* Pagination */}
           <TablePagination
