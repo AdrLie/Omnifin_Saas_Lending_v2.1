@@ -319,6 +319,15 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_destroy(self, instance):
         # Hard delete - remove user from database
         instance.delete()
+    
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to handle deletion properly"""
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(
+            {'detail': 'User deleted successfully'},
+            status=status.HTTP_200_OK
+        )
 
 
 @api_view(['GET'])
