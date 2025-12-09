@@ -239,6 +239,7 @@ const UserManagementPage = () => {
       setDeleteDialogOpen(false);
       setUserToDelete(null);
       await loadUsers();
+      setPage(0);
     } catch (err) {
       setError(err.message || 'Failed to delete user');
     } finally {

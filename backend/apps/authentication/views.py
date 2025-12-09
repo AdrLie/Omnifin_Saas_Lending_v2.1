@@ -317,9 +317,8 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         return User.objects.filter(group_id=self.request.user.group_id)
     
     def perform_destroy(self, instance):
-        # Soft delete - deactivate user
-        instance.is_active = False
-        instance.save()
+        # Hard delete - remove user from database
+        instance.delete()
 
 
 @api_view(['GET'])
