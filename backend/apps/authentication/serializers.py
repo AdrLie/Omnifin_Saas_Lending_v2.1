@@ -190,10 +190,11 @@ class ApplicantProfileCreateSerializer(serializers.ModelSerializer):
 class InvitationCodeSerializer(serializers.ModelSerializer):
     """Invitation Code serializer for viewing"""
     organization_name = serializers.CharField(source='organization.name', read_only=True)
+    used_by_email = serializers.CharField(source='used_by.email', read_only=True, allow_null=True)
     
     class Meta:
         model = InvitationCode
-        fields = ['id', 'code', 'email', 'is_used', 'used_by', 'used_at', 'expires_at', 'organization_name', 'created_at', 'is_valid']
+        fields = ['id', 'code', 'email', 'is_used', 'used_by', 'used_by_email', 'used_at', 'expires_at', 'organization_name', 'created_at', 'is_valid']
         read_only_fields = ['id', 'code', 'used_by', 'used_at', 'created_at', 'is_valid']
 
 

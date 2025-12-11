@@ -34,15 +34,22 @@ import {
   Close as CloseIcon,
   History as HistoryIcon,
   AccessTime as AccessTimeIcon,
+  Assessment,
+  CreditCard,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
 import { chatService } from '../services/chatService';
+import { useSubscription } from '../hooks/useSubscription';
 import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+import LoadingScreen from '../components/LoadingScreen';
 
 const ChatPage = () => {
   const { user } = useAuth();
   const { startConversation, sendMessage, isLoading } = useChat();
+  const { subscription, loading } = useSubscription();
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
@@ -439,6 +446,34 @@ const ChatPage = () => {
   );
 
   return (
+    <>
+      {loading ? (
+        <LoadingScreen />
+      ) : !subscription ? (
+        <Container maxWidth="md" sx={{ mt: 8, mb: 4 }}>
+          <Paper sx={{ p: 6, textAlign: 'center' }}>
+            <Box sx={{ mb: 3 }}>
+              <Assessment sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
+              <Typography variant="h4" gutterBottom>
+                No Active Subscription
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 4, maxWidth: 600, mx: 'auto' }}>
+                You need an active subscription to use AI Chat. Choose a plan and start chatting with our AI assistant today.
+              </Typography>
+            </Box>
+            
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<CreditCard />}
+              onClick={() => navigate('/subscribe')}
+              sx={{ px: 4, py: 1.5 }}
+            >
+              View Subscription Plans
+            </Button>
+          </Paper>
+        </Container>
+      ) : (
     <Container 
       maxWidth="xl" 
       sx={{ 
@@ -681,6 +716,8 @@ const ChatPage = () => {
       {/* Hidden inputs */}
       <input ref={fileInputRef} type="file" style={{ display: 'none' }} />
     </Container>
+      )}
+    </>
   );
 };
 

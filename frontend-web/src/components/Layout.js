@@ -76,6 +76,8 @@ const Layout = () => {
       { text: 'Dashboard', icon: <Dashboard />, path: ROUTES.HOME },
       { text: 'Manage Team', icon: <Group />, path: ROUTES.USERS },
       { text: 'Loan Management', icon: <Description />, path: ROUTES.LOANS },
+      { text: 'AI Chat', icon: <Chat />, path: ROUTES.CHAT },
+      { text: 'Voice Chat', icon: <Mic />, path: ROUTES.VOICE_CHAT },
       { text: 'Token Usage', icon: <TrendingUp />, path: ROUTES.USAGE },
       { text: 'Subscriptions', icon: <CreditCard />, path: ROUTES.SUBSCRIBE },
       { text: 'Analytics', icon: <Analytics />, path: ROUTES.ANALYTICS },

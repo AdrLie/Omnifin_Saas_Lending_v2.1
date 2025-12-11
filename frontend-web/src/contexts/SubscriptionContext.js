@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { API_BASE_URL } from '../utils/constants';
+import subscriptionService from '../services/subscriptionService';
 
 export const SubscriptionContext = createContext();
 
@@ -17,56 +17,35 @@ export const SubscriptionProvider = ({ children }) => {
       const token = localStorage.getItem('authToken');
       if (!token) {
         setHasActiveSubscription(false);
-        setLoading(false);
+        setSubscription(null);
         return;
       }
 
-      const response = await fetch(
-        `${API_BASE_URL}/subscriptions/status/`,
-        {
-          headers: {
-            'Authorization': `Token ${token}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
+      // Use subscriptionService for consistent API calls
+      const subData = await subscriptionService.getMySubscription();
+      setSubscription(subData);
+      setHasActiveSubscription(true);
+    } catch (err) {
+      // If no subscription found (404), don't show error
+      if (err.response?.status === 404) {
         setHasActiveSubscription(false);
-        setLoading(false);
-        return;
-      }
-
-      const data = await response.json();
-      const isActive = data.status === 'active' || data.status === 'trialing';
-      setHasActiveSubscription(isActive);
-
-      if (isActive) {
-        const detailsResponse = await fetch(
-          `${API_BASE_URL}/subscriptions/current/`,
-          {
-            headers: {
-              'Authorization': `Token ${token}`,
-            },
-          }
-        );
-
-        if (detailsResponse.ok) {
-          const details = await detailsResponse.json();
-          setSubscription(details);
-        }
+        setSubscription(null);
       } else {
+        console.error('Error checking subscription:', err);
+        setError(err.message);
+        setHasActiveSubscription(false);
         setSubscription(null);
       }
-    } catch (err) {
-      console.error('Error checking subscription:', err);
-      setError(err.message);
-      setHasActiveSubscription(false);
+    } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     checkSubscription();
+    // Check subscription every 30 seconds to stay in sync
+    const interval = setInterval(checkSubscription, 30000);
+    return () => clearInterval(interval);
   }, [checkSubscription]);
 
   const value = {
