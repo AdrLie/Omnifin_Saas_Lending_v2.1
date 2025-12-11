@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -45,13 +45,16 @@ import {
   Close as CloseIcon,
   FilterList as FilterIcon,
   Search as SearchIcon,
-  Download as DownloadIcon
+  Download as DownloadIcon,
+  Assessment,
+  CreditCard
 } from '@mui/icons-material';
 import { loanService } from '../services/loanService';
 import applicationProgressService from '../services/applicationProgressService';
 import LoanStepContent from '../components/loan-steps/LoanStepContent';
-import { SubscriptionContext } from '../contexts/SubscriptionContext';
-import SubscriptionRequired from '../components/SubscriptionRequired';
+import { useSubscription } from '../hooks/useSubscription';
+import { useNavigate } from 'react-router-dom';
+import LoadingScreen from '../components/LoadingScreen';
 
 const TabPanel = ({ children, value, index }) => (
   <div hidden={value !== index}>
@@ -60,8 +63,9 @@ const TabPanel = ({ children, value, index }) => (
 );
 
 const LoanManagementPage = () => {
+  const navigate = useNavigate();
+  const { subscription, loading: subscriptionLoading } = useSubscription();
   const [tabValue, setTabValue] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [loans, setLoans] = useState([]);
@@ -75,13 +79,9 @@ const LoanManagementPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [activeStep, setActiveStep] = useState(0);
-  const [progress, setProgress] = useState(null);
-  const [loadingProgress, setLoadingProgress] = useState(false);
-  const { hasActiveSubscription } = useContext(SubscriptionContext);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
 
   const loanStatuses = [
     'submitted',
@@ -123,7 +123,6 @@ const LoanManagementPage = () => {
     const pageIndex = (typeof p === 'number' ? p : page);
     const rowsIndex = (typeof r === 'number' ? r : rowsPerPage);
     try {
-      setLoading(true);
       const params = {};
       
       if (tabValue === 1) {
@@ -149,9 +148,7 @@ const LoanManagementPage = () => {
       params.page = (pageIndex || 0) + 1;
       params.page_size = rowsIndex || rowsPerPage;
 
-      console.log('Loading loans with params:', params);
       const data = await loanService.getAllLoans(params);
-      console.log('Loan data response:', data);
       
       let loansArray = [];
       if (Array.isArray(data)) {
@@ -175,8 +172,6 @@ const LoanManagementPage = () => {
       setTotalLoans(data.count || loansArray.length);
     } catch (err) {
       setError('Failed to load loans');
-    } finally {
-      setLoading(false);
     }
   }, [tabValue, statusFilter, typeFilter, debouncedSearchQuery, page, rowsPerPage]);
 
@@ -191,56 +186,17 @@ const LoanManagementPage = () => {
   const handleViewLoan = async (loan) => {
     setSelectedLoan(loan);
     setDialogOpen(true);
-    
-    try {
-      setLoadingProgress(true);
-      const progressData = await applicationProgressService.getProgress(loan.id);
-      setProgress(progressData);
-      setActiveStep(progressData.current_step);
-    } catch (err) {
-      console.error('Failed to load progress:', err);
-      setActiveStep(getCurrentStep(loan.status));
-    } finally {
-      setLoadingProgress(false);
-    }
   };
 
   const handleUpdateStatus = async (loanId, newStatus) => {
     try {
-      setLoading(true);
       await loanService.updateLoanStatus(loanId, newStatus);
       setSuccess('Loan status updated successfully!');
       loadLoans(page, rowsPerPage);
       setDialogOpen(false);
     } catch (err) {
       setError('Failed to update loan status');
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const handleAddReviewNote = async (loanId, note) => {
-    try {
-      await loanService.addReviewNote(loanId, note);
-      setSuccess('Review note added successfully!');
-      loadLoans(page, rowsPerPage);
-    } catch (err) {
-      setError('Failed to add review note');
-    }
-  };
-
-  const getCurrentStep = (status) => {
-    const statusMap = {
-      'submitted': 0,
-      'under_review': 1,
-      'documents_verified': 2,
-      'credit_check': 3,
-      'approved': 4,
-      'rejected': 4,
-      'funded': 5,
-      'closed': 5
-    };
-    return statusMap[status] || 0;
   };
 
   const getStatusColor = (status) => {
@@ -395,8 +351,32 @@ const LoanManagementPage = () => {
 
   return (
     <>
-      {!hasActiveSubscription ? (
-        <SubscriptionRequired />
+      {subscriptionLoading ? (
+        <LoadingScreen />
+      ) : !subscription ? (
+        <Container maxWidth="md" sx={{ mt: 8, mb: 4 }}>
+          <Paper sx={{ p: 6, textAlign: 'center' }}>
+            <Box sx={{ mb: 3 }}>
+              <Assessment sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
+              <Typography variant="h4" gutterBottom>
+                No Active Subscription
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 4, maxWidth: 600, mx: 'auto' }}>
+                You need an active subscription to manage loans and create loan applications. Choose a plan that fits your needs and start managing your loans today.
+              </Typography>
+            </Box>
+            
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<CreditCard />}
+              onClick={() => navigate('/subscribe')}
+              sx={{ px: 4, py: 1.5 }}
+            >
+              View Subscription Plans
+            </Button>
+          </Paper>
+        </Container>
       ) : (
     <Container maxWidth="xl" sx={{ py: { xs: 2, md: 3 } }}>
       <Paper elevation={3}>
@@ -667,8 +647,6 @@ const LoanManagementPage = () => {
                           const updatedLoan = await loanService.getLoanById(selectedLoan.id);
                           setSelectedLoan(updatedLoan);
                         }
-                        const progressData = res?.progress || await applicationProgressService.getProgress(selectedLoan.id);
-                        setProgress(progressData);
                         loadLoans(page, rowsPerPage);
                       } catch (err) {
                         console.error('Failed to update step:', err);
@@ -692,8 +670,6 @@ const LoanManagementPage = () => {
                           const updatedLoan = await loanService.getLoanById(selectedLoan.id);
                           setSelectedLoan(updatedLoan);
                         }
-                        const progressData = res?.progress || await applicationProgressService.getProgress(selectedLoan.id);
-                        setProgress(progressData);
                         loadLoans(page, rowsPerPage);
                       } catch (err) {
                         console.error('Failed to update step:', err);

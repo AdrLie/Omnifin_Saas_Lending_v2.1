@@ -13,7 +13,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         tpb_managers = User.objects.filter(role='tpb_manager')
         created_count = 0
-        
+    
         for manager in tpb_managers:
             # Check if manager already has an organization
             existing_org = Organization.objects.filter(owner=manager).exists()

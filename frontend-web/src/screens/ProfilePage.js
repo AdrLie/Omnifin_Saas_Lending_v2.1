@@ -34,11 +34,9 @@ import {
   Person as PersonIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  Business as BusinessIcon,
   Edit as EditIcon,
   Security as SecurityIcon,
   History as HistoryIcon,
-  Notifications as NotificationsIcon,
   CreditCard as CreditCardIcon,
   Assignment as ApplicationIcon,
   CheckCircle as VerifiedIcon,
@@ -60,8 +58,8 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
-import { API_BASE_URL } from '../utils/constants';
 import activityService from '../services/activityService';
+import profileService from '../services/profileService';
 
 const TabPanel = ({ children, value, index }) => (
   <div hidden={value !== index}>
@@ -137,10 +135,12 @@ const ProfilePage = () => {
 
   useEffect(() => {
     loadActivities();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadActivities(activityPage, activityRowsPerPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activityPage, activityRowsPerPage]);
 
   const handleActivityPageChange = (event, newPage) => {
@@ -179,24 +179,17 @@ const ProfilePage = () => {
 
   const loadApplicantProfile = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/profile/applicant/`, {
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('authToken')}`,
-        }
+      const data = await profileService.getApplicantProfile();
+      setApplicantData({
+        date_of_birth: data.date_of_birth || '',
+        address: data.address || '',
+        city: data.city || '',
+        state: data.state || '',
+        zip_code: data.zip_code || '',
+        employment_status: data.employment_status || '',
+        annual_income: data.annual_income || '',
+        credit_score: data.credit_score || ''
       });
-      if (response.ok) {
-        const data = await response.json();
-        setApplicantData({
-          date_of_birth: data.date_of_birth || '',
-          address: data.address || '',
-          city: data.city || '',
-          state: data.state || '',
-          zip_code: data.zip_code || '',
-          employment_status: data.employment_status || '',
-          annual_income: data.annual_income || '',
-          credit_score: data.credit_score || ''
-        });
-      }
     } catch (err) {
       console.error('Failed to load applicant profile:', err);
     }
@@ -216,24 +209,11 @@ const ProfilePage = () => {
     setSuccess(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/profile/applicant/`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Token ${localStorage.getItem('authToken')}`,
-        },
-        body: JSON.stringify(applicantData)
-      });
-
-      if (response.ok) {
-        setSuccess('Applicant profile updated successfully!');
-        setEditApplicantMode(false);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.detail || 'Failed to update applicant profile');
-      }
+      await profileService.updateApplicantProfile(applicantData);
+      setSuccess('Applicant profile updated successfully!');
+      setEditApplicantMode(false);
     } catch (err) {
-      setError('Failed to update applicant profile');
+      setError(err.response?.data?.detail || 'Failed to update applicant profile');
     } finally {
       setLoading(false);
     }
@@ -317,7 +297,6 @@ const ProfilePage = () => {
   };
 
   const handleEnableMfa = async () => {
-    // First check current user status
     if (mfaEnabled) {
       setError('Two-factor authentication is already enabled for your account');
       return;
@@ -326,26 +305,13 @@ const ProfilePage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/mfa/enable/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('authToken')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setMfaQrCode(data.qr_code);
-        setMfaSecret(data.secret);
-        setMfaSetupDialogOpen(true);
-        setError(null);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to enable MFA');
-      }
+      const data = await profileService.enableMfa();
+      setMfaQrCode(data.qr_code);
+      setMfaSecret(data.secret);
+      setMfaSetupDialogOpen(true);
+      setError(null);
     } catch (err) {
-      setError('Failed to enable MFA');
+      setError(err.response?.data?.error || 'Failed to enable MFA');
     } finally {
       setLoading(false);
     }
@@ -360,30 +326,16 @@ const ProfilePage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/mfa/verify-setup/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('authToken')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ token: mfaToken })
-      });
-      
-      if (response.ok) {
-        setSuccess('Two-factor authentication enabled successfully!');
-        setMfaEnabled(true);
-        setMfaSetupDialogOpen(false);
-        setMfaToken('');
-        setMfaQrCode('');
-        setMfaSecret('');
-        // Fetch updated user data
-        await fetchUpdatedUserData();
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Invalid verification code');
-      }
+      await profileService.verifyMfaSetup(mfaToken);
+      setSuccess('Two-factor authentication enabled successfully!');
+      setMfaEnabled(true);
+      setMfaSetupDialogOpen(false);
+      setMfaToken('');
+      setMfaQrCode('');
+      setMfaSecret('');
+      await fetchUpdatedUserData();
     } catch (err) {
-      setError('Failed to verify MFA setup');
+      setError(err.response?.data?.error || 'Invalid verification code');
     } finally {
       setLoading(false);
     }
@@ -391,26 +343,13 @@ const ProfilePage = () => {
 
   const fetchUpdatedUserData = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/me/`, {
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('authToken')}`
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        const updatedUser = data.user;
-        // Update localStorage with new user data
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        
-        // Update the local MFA state
-        setMfaEnabled(updatedUser.mfa_enabled || false);
-        
-        // Force page reload to update context
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
-      }
+      const data = await profileService.getCurrentUser();
+      const updatedUser = data.user;
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setMfaEnabled(updatedUser.mfa_enabled || false);
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
     } catch (err) {
       console.error('Failed to fetch updated user data:', err);
     }
@@ -430,32 +369,15 @@ const ProfilePage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/mfa/disable/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('authToken')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-          password: mfaDisablePassword,
-          token: mfaDisableToken
-        })
-      });
-      
-      if (response.ok) {
-        setSuccess('Two-factor authentication disabled successfully!');
-        setMfaEnabled(false);
-        setMfaDialogOpen(false);
-        setMfaDisablePassword('');
-        setMfaDisableToken('');
-        // Fetch updated user data
-        await fetchUpdatedUserData();
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to disable MFA');
-      }
+      await profileService.disableMfa(mfaDisablePassword, mfaDisableToken);
+      setSuccess('Two-factor authentication disabled successfully!');
+      setMfaEnabled(false);
+      setMfaDialogOpen(false);
+      setMfaDisablePassword('');
+      setMfaDisableToken('');
+      await fetchUpdatedUserData();
     } catch (err) {
-      setError('Failed to disable MFA');
+      setError(err.response?.data?.error || 'Failed to disable MFA');
     } finally {
       setLoading(false);
     }

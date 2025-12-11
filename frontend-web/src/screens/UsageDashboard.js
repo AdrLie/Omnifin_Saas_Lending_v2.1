@@ -22,6 +22,7 @@ import {
 } from '@mui/icons-material';
 import subscriptionService from '../services/subscriptionService';
 import { useNavigate } from 'react-router-dom';
+import LoadingScreen from '../components/LoadingScreen';
 
 const UsageDashboard = () => {
   const navigate = useNavigate();
@@ -47,16 +48,15 @@ const UsageDashboard = () => {
       // Check limits
       const limitsData = await subscriptionService.checkLimits();
       setLimits(limitsData);
-
-      setLoading(false);
     } catch (err) {
-      // If no subscription found, just set loading to false without error
+      // If no subscription found, don't show error
       if (err.response?.status === 404) {
-        setLoading(false);
+        // Continue without error - will show subscription gate
       } else {
         setError(err.response?.data?.error || 'Failed to load usage data');
-        setLoading(false);
       }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -70,7 +70,7 @@ const UsageDashboard = () => {
     return num?.toLocaleString() || '0';
   };
 
-  if (loading) return <Typography>Loading...</Typography>;
+  if (loading) return <LoadingScreen />;
   if (error) return <Alert severity="error">{error}</Alert>;
   
   if (!usage || !subscription) {
@@ -79,7 +79,7 @@ const UsageDashboard = () => {
         <Paper sx={{ p: 6, textAlign: 'center' }}>
           <Box sx={{ mb: 3 }}>
             <Assessment sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h4" gutterBottom>
+            <Typography variant="h4" gutterBottom> 
               No Active Subscription
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 4, maxWidth: 600, mx: 'auto' }}>
@@ -105,8 +105,6 @@ const UsageDashboard = () => {
   // Provide default values if data is missing
   const llmUsage = usage.llm || { used: 0, limit: 0, percentage: 0 };
   const voiceUsage = usage.voice || { used: 0, limit: 0, percentage: 0 };
-  const warnings = limits?.warnings || [];
-  const suggestedUpgrade = limits?.suggested_upgrade || null;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>

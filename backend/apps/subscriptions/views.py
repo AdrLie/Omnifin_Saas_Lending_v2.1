@@ -188,11 +188,14 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         
         # Use user's group_id or provided group_id
         group_id = serializer.validated_data.get('group_id') or request.user.group_id
+        
+        # If user doesn't have a group_id, auto-assign one
         if not group_id:
-            return Response(
-                {'error': 'User must have a group_id to purchase subscription'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            import uuid
+            group_id = uuid.uuid4()
+            request.user.group_id = group_id
+            request.user.save()
+            logger.info(f"Auto-assigned group_id {group_id} to user {request.user.id}")
         
         try:
             subscription, stripe_subscription = SubscriptionService.create_subscription(
@@ -302,6 +305,15 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         """Get usage summary for current user's group"""
         try:
             group_id = request.user.group_id
+            
+            # If user has no group_id, try to find from subscription
+            if not group_id:
+                subscription = Subscription.objects.filter(
+                    user=request.user
+                ).order_by('-created_at').first()
+                if subscription and subscription.group_id:
+                    group_id = subscription.group_id
+            
             if not group_id:
                 return Response(
                     {'error': 'User does not have a group'},
@@ -321,22 +333,25 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     def status(self, request):
         """Get current subscription status for the user"""
         try:
+            # First, try to find subscription by group_id (for TPB managers)
             group_id = request.user.group_id
-            if not group_id:
-                return Response({
-                    'status': 'no_subscription',
-                    'message': 'User has no subscription',
-                    'has_active_subscription': False
-                }, status=status.HTTP_200_OK)
+            subscription = None
             
-            subscription = Subscription.objects.filter(
-                group_id=group_id
-            ).order_by('-created_at').first()
+            if group_id:
+                subscription = Subscription.objects.filter(
+                    group_id=group_id
+                ).order_by('-created_at').first()
+            
+            # If no group subscription, try to find subscription assigned to the user directly
+            if not subscription:
+                subscription = Subscription.objects.filter(
+                    user=request.user
+                ).order_by('-created_at').first()
             
             if not subscription:
                 return Response({
                     'status': 'no_subscription',
-                    'message': 'No subscription found for user group',
+                    'message': 'No subscription found',
                     'has_active_subscription': False
                 }, status=status.HTTP_200_OK)
             
@@ -361,17 +376,22 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     def current(self, request):
         """Get current subscription details for the user"""
         try:
+            # First, try to find subscription by group_id (for TPB managers)
             group_id = request.user.group_id
-            if not group_id:
-                return Response(
-                    {'error': 'User has no group'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+            subscription = None
             
-            subscription = Subscription.objects.filter(
-                group_id=group_id,
-                status__in=['active', 'trialing']
-            ).first()
+            if group_id:
+                subscription = Subscription.objects.filter(
+                    group_id=group_id,
+                    status__in=['active', 'trialing']
+                ).first()
+            
+            # If no group subscription, try to find subscription assigned to the user directly
+            if not subscription:
+                subscription = Subscription.objects.filter(
+                    user=request.user,
+                    status__in=['active', 'trialing']
+                ).first()
             
             if not subscription:
                 return Response(

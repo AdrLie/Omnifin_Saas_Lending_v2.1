@@ -25,6 +25,7 @@ export const FILE_CONFIG = {
 // Application Status Configuration
 export const APPLICATION_STATUS = {
   PENDING: 'pending',
+  
   SUBMITTED: 'submitted',
   UNDER_REVIEW: 'under_review',
   APPROVED: 'approved',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Container,
@@ -40,18 +40,25 @@ import {
   Close as CloseIcon,
   History as HistoryIcon,
   AccessTime as AccessTimeIcon,
-  Add as AddIcon
+  Add as AddIcon,
+  Assessment,
+  CreditCard,
 } from '@mui/icons-material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
 import { chatService } from '../services/chatService';
+import { useSubscription } from '../hooks/useSubscription';
 import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+import LoadingScreen from '../components/LoadingScreen';
 
 const VoiceChatPage = () => {
   const { user } = useAuth();
   const { startConversation, sendVoiceMessage, sendMessage, getActiveConversation } = useChat();
+  const { subscription, loading } = useSubscription();
+  const navigate = useNavigate();
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(70);
@@ -562,6 +569,34 @@ const VoiceChatPage = () => {
   };
 
   return (
+    <>
+      {loading ? (
+        <LoadingScreen />
+      ) : !subscription ? (
+        <Container maxWidth="md" sx={{ mt: 8, mb: 4 }}>
+          <Paper sx={{ p: 6, textAlign: 'center' }}>
+            <Box sx={{ mb: 3 }}>
+              <Assessment sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
+              <Typography variant="h4" gutterBottom>
+                No Active Subscription
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 4, maxWidth: 600, mx: 'auto' }}>
+                You need an active subscription to use Voice Chat. Choose a plan and start chatting with our voice assistant today.
+              </Typography>
+            </Box>
+            
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<CreditCard />}
+              onClick={() => navigate('/subscribe')}
+              sx={{ px: 4, py: 1.5 }}
+            >
+              View Subscription Plans
+            </Button>
+          </Paper>
+        </Container>
+      ) : (
     <Container maxWidth="lg" sx={{ py: 3 }}>
       <Grid container spacing={3}>
         {/* Main Voice Interface */}
@@ -1026,6 +1061,8 @@ const VoiceChatPage = () => {
         style={{ display: 'none' }}
       />
     </Container>
+      )}
+    </>
   );
 };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -46,14 +46,15 @@ import {
   Check as CheckIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
-import { SubscriptionContext } from '../contexts/SubscriptionContext';
+import { useSubscription } from '../hooks/useSubscription';
 import { API_BASE_URL } from '../utils/constants';
 import ConfirmationModal from '../components/ConfirmationModal';
+import LoadingScreen from '../components/LoadingScreen';
 
 const UserManagementPage = () => {
   const { loadAllUsers, createUser, updateUser, deleteUser, sendPasswordReset } = useUser();
-  const { hasActiveSubscription } = useContext(SubscriptionContext);
-  const [loading, setLoading] = useState(false);
+  const { subscription, loading: subscriptionLoading } = useSubscription();
+  const [usersLoading, setUsersLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [users, setUsers] = useState([]);
@@ -90,6 +91,7 @@ const UserManagementPage = () => {
   const [copiedCode, setCopiedCode] = useState(null);
   const [organization, setOrganization] = useState(null);
   const [loadingOrg, setLoadingOrg] = useState(true);
+  const [activeTab, setActiveTab] = useState(0);
 
   const roles = [
     { value: 'tpb_customer', label: 'TPB Customer (Applicant)' },
@@ -129,13 +131,13 @@ const UserManagementPage = () => {
 
   const loadUsers = async () => {
     try {
-      setLoading(true);
+      setUsersLoading(true);
       const data = await loadAllUsers();
       setUsers(data);
     } catch (err) {
       setError('Failed to load users');
     } finally {
-      setLoading(false);
+      setUsersLoading(false);
     }
   };
 
@@ -204,7 +206,7 @@ const UserManagementPage = () => {
 
   const handleSaveUser = async () => {
     try {
-      setLoading(true);
+      setUsersLoading(true);
       setError(null);
 
       if (dialogMode === 'create') {
@@ -220,7 +222,7 @@ const UserManagementPage = () => {
     } catch (err) {
       setError(err.message || 'Failed to save user');
     } finally {
-      setLoading(false);
+      setUsersLoading(false);
     }
   };
 
@@ -255,26 +257,26 @@ const UserManagementPage = () => {
 
   const handleToggleUserStatus = async (user) => {
     try {
-      setLoading(true);
+      setUsersLoading(true);
       await updateUser(user.id, { ...user, is_active: !user.is_active });
       setSuccess(`User ${!user.is_active ? 'activated' : 'deactivated'} successfully!`);
       loadUsers();
     } catch (err) {
       setError('Failed to update user status');
     } finally {
-      setLoading(false);
+      setUsersLoading(false);
     }
   };
 
   const handleSendPasswordReset = async (email) => {
     try {
-      setLoading(true);
+      setUsersLoading(true);
       await sendPasswordReset(email);
       setSuccess('Password reset email sent successfully!');
     } catch (err) {
       setError('Failed to send password reset email');
     } finally {
-      setLoading(false);
+      setUsersLoading(false);
     }
   };
 
@@ -303,7 +305,7 @@ const UserManagementPage = () => {
 
   const handleCreateInvitationCode = async () => {
     try {
-      setLoading(true);
+      setUsersLoading(true);
       setError(null);
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${API_BASE_URL}/auth/invitation-codes/create/`, {
@@ -327,7 +329,7 @@ const UserManagementPage = () => {
     } catch (err) {
       setError(err.message || 'Failed to create invitation code');
     } finally {
-      setLoading(false);
+      setUsersLoading(false);
     }
   };
 
@@ -384,10 +386,10 @@ const UserManagementPage = () => {
     }));
   };
 
-  const [activeTab, setActiveTab] = React.useState(0);
-
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
+      {subscriptionLoading && <LoadingScreen />}
+      {!subscriptionLoading && (
       <Paper elevation={3}>
         {/* Header and Tabs */}
         <Box sx={{ p: 4, borderBottom: 1, borderColor: 'divider' }}>
@@ -434,11 +436,12 @@ const UserManagementPage = () => {
                 variant="contained"
                 onClick={() => handleDialogOpen('create')}
                 startIcon={<AddIcon />}
+                disabled={!subscription}
               >
                 Add User
               </Button>
             )}
-            {activeTab === 1 && hasActiveSubscription && (
+            {activeTab === 1 && subscription && (
               <Button
                 variant="contained"
                 onClick={() => setInvitationDialogOpen(true)}
@@ -453,7 +456,7 @@ const UserManagementPage = () => {
           <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
             <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
               <Tab label="Team Members" />
-              <Tab label="Invitation Codes" />
+              {subscription && <Tab label="Invitation Codes" />}
             </Tabs>
           </Box>
         </Box>
@@ -728,7 +731,7 @@ const UserManagementPage = () => {
                               />
                             </TableCell>
                             <TableCell>{new Date(code.expires_at).toLocaleDateString()}</TableCell>
-                            <TableCell>{code.used_by_name || '—'}</TableCell>
+                            <TableCell>{code.used_by_email || '—'}</TableCell>
                             <TableCell align="center">
                               <Tooltip title={copiedCode === index ? 'Copied!' : 'Copy code'}>
                                 <IconButton
@@ -764,6 +767,7 @@ const UserManagementPage = () => {
           )}
         </Box>
       </Paper>
+      )}
 
       {/* Invitation Code Dialog */}
       <Dialog open={invitationDialogOpen} onClose={() => setInvitationDialogOpen(false)} maxWidth="sm" fullWidth>
@@ -805,14 +809,14 @@ const UserManagementPage = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInvitationDialogOpen(false)} disabled={loading}>Cancel</Button>
+          <Button onClick={() => setInvitationDialogOpen(false)} disabled={usersLoading}>Cancel</Button>
           <Button 
             onClick={handleCreateInvitationCode} 
             variant="contained" 
-            disabled={loading}
-            startIcon={loading ? <CircularProgress size={20} /> : undefined}
+            disabled={usersLoading}
+            startIcon={usersLoading ? <CircularProgress size={20} /> : undefined}
           >
-            {loading ? 'Generating...' : 'Generate Code'}
+            {usersLoading ? 'Generating...' : 'Generate Code'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -916,8 +920,8 @@ const UserManagementPage = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleDialogClose}>Cancel</Button>
-          <Button onClick={handleSaveUser} variant="contained" disabled={loading}>
-            {loading ? <CircularProgress size={24} /> : 'Save User'}
+          <Button onClick={handleSaveUser} variant="contained" disabled={usersLoading}>
+            {usersLoading ? <CircularProgress size={24} /> : 'Save User'}
           </Button>
         </DialogActions>
       </Dialog>
