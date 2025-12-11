@@ -22,6 +22,7 @@ import { Check as CheckIcon } from '@mui/icons-material';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import subscriptionService from '../services/subscriptionService';
+import { useSubscription } from '../hooks/useSubscription';
 
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLIC_KEY || 'pk_test_51RMP2oGgetd0muXY5uMb4YkygxholvUPhU7DS43stTYYMtYPXIEe9vZFnPOfGdR0nL6FWH2zjfpiVK4Q8hwocEEH005RvHQPja');
 
@@ -126,6 +127,7 @@ const CheckoutForm = ({ selectedPlan, onSuccess, onCancel }) => {
 };
 
 const SubscribeScreen = () => {
+  const { checkSubscription } = useSubscription();
   const [plans, setPlans] = useState([]);
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -165,9 +167,12 @@ const SubscribeScreen = () => {
     setOpenCheckout(true);
   };
 
-  const handleSubscriptionSuccess = () => {
+  const handleSubscriptionSuccess = async () => {
     setOpenCheckout(false);
     setSuccess('Subscription created successfully!');
+    // Refresh subscription context immediately
+    await checkSubscription();
+    // Also refresh local data
     fetchData();
   };
 
