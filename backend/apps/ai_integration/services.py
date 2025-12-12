@@ -18,17 +18,12 @@ logger = logging.getLogger('omnifin')
 
 
 class AIChatService:
-    """Service for handling AI chat interactions"""
-    
     def __init__(self):
-        # ✅ NEW SYNTAX - Create OpenAI client without proxies argument
         try:
-            # Remove any proxy-related environment variables that might interfere
             client_kwargs = {
                 'api_key': settings.OPENAI_API_KEY
             }
             
-            # Only add timeout, max_retries if needed
             # client_kwargs['timeout'] = 60.0
             # client_kwargs['max_retries'] = 2
             
@@ -98,7 +93,6 @@ class AIChatService:
             # Define tools/functions the AI can use
             tools = self._get_available_tools()
             
-            # ✅ NEW SYNTAX - Generate AI response using new OpenAI API with function calling
             logger.info(f"Calling OpenAI API with model: {self.model}")
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -185,32 +179,6 @@ class AIChatService:
         return messages
     
     def _build_system_prompt(self, context: Dict[str, Any] = None) -> str:
-        """Build system prompt with context"""
-        base_prompt = """You are a helpful AI loan assistant for Omnifin Platform. 
-        Your role is to guide users through the loan application process, gather necessary information,
-        and provide helpful information about loan options and requirements.
-        
-        Guidelines:
-        - Be professional, friendly, and helpful
-        - Ask for information in a conversational manner
-        - Provide clear explanations when needed
-        - Guide users through the application process step by step
-        - If you don't understand something, ask for clarification
-        - Never provide financial advice or make loan decisions
-        
-        When a user wants to apply for a loan, you need to collect these required fields:
-        1. loan_amount: The amount they want to borrow (number)
-        2. loan_purpose: The reason for the loan (text)
-        3. loan_term: The repayment period in months (number)
-        4. interest_rate: The desired interest rate percentage (number)
-        
-        IMPORTANT: 
-        - Only call submit_loan_application ONCE per loan application request
-        - After successfully submitting an application, DO NOT submit it again even if the user responds
-        - If the user says "thanks" or similar after submission, acknowledge it but do NOT resubmit
-        - If they want to apply for ANOTHER loan, treat it as a completely new application
-        """
-        
         if context:
             context_str = "\n\nCurrent context:\n"
             for key, value in context.items():
@@ -220,7 +188,6 @@ class AIChatService:
         return base_prompt
     
     def _get_available_tools(self) -> List[Dict[str, Any]]:
-        """Define tools/functions available to the AI"""
         return [
             {
                 "type": "function",
@@ -352,10 +319,8 @@ class AIChatService:
 
 
 class VoiceService:
-    """Service for handling voice interactions"""
     
     def __init__(self):
-        # ✅ NEW SYNTAX - Create client without proxies
         try:
             self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
             self.elevenlabs_api_key = settings.ELEVENLABS_API_KEY
@@ -365,7 +330,6 @@ class VoiceService:
             raise
     
     def speech_to_text(self, audio_file, user=None) -> str:
-        """Convert speech to text using OpenAI Whisper"""
         try:
             logger.info("Starting speech to text conversion with Whisper")
             
@@ -375,7 +339,6 @@ class VoiceService:
 
             openai_file_tuple = (audio_file.name, file_content)
 
-            # ✅ NEW SYNTAX - Use OpenAI Whisper API
             transcript = self.client.audio.transcriptions.create(
                 model="whisper-1",
                 file=openai_file_tuple, 
@@ -404,11 +367,9 @@ class VoiceService:
             raise Exception(f"Failed to transcribe audio: {str(e)}") # Return actual error for debugging
     
     def text_to_speech(self, text: str, voice_id: str = None, user=None) -> str:
-        """Convert text to speech using OpenAI TTS"""
         try:
             logger.info("Starting text to speech conversion")
             
-            # ✅ NEW SYNTAX - Use OpenAI TTS API
             response = self.client.audio.speech.create(
                 model="tts-1",
                 voice=voice_id or "alloy",
@@ -552,7 +513,6 @@ class DocumentIntelligenceService:
     """Service for intelligent document processing"""
     
     def __init__(self):
-        # ✅ NEW SYNTAX
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
     
     def extract_document_info(self, document_path: str) -> Dict[str, Any]:
@@ -589,7 +549,6 @@ class AIAnalyticsService:
     """Service for AI-powered analytics"""
     
     def __init__(self):
-        # ✅ NEW SYNTAX
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
     
     def analyze_conversation(self, conversation: Conversation) -> Dict[str, Any]:
@@ -605,7 +564,6 @@ class AIAnalyticsService:
                 role = "User" if msg.sender == "user" else "Assistant"
                 conversation_text += f"{role}: {msg.content}\n"
             
-            # ✅ NEW SYNTAX
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
