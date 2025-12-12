@@ -10,8 +10,6 @@ from apps.loans.models import Application
 
 
 class Prompt(models.Model):
-    """AI Prompt templates"""
-    
     CATEGORY_CHOICES = [
         ('greeting', _('Greeting')),
         ('information_gathering', _('Information Gathering')),

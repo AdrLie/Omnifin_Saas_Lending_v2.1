@@ -23,7 +23,7 @@ urlpatterns = [
     path('chat/', chat_message, name='chat_message'),
     path('voice/', voice_message, name='voice_message'),
     
-    # Conversation history endpoints (must come before router to avoid conflicts)
+    # Conversation history endpoints
     path('conversations/list/', get_user_conversations, name='user_conversations'),
     path('conversations/<uuid:conversation_id>/messages/', get_conversation_messages, name='conversation_messages'),
     path('conversations/<uuid:conversation_id>/delete/', delete_conversation, name='delete_conversation'),
@@ -37,6 +37,5 @@ urlpatterns = [
     # Dashboard
     path('dashboard/', ai_dashboard, name='ai_dashboard'),
     
-    # Router URLs (must come last to avoid conflicts with custom paths)
     path('', include(router.urls)),
 ]

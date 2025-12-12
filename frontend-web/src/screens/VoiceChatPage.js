@@ -167,6 +167,22 @@ const VoiceChatPage = () => {
 
   const startRecording = async () => {
     try {
+      // Check if the browser is using HTTPS or localhost/127.0.0.1 (for development)
+      const isSecure = window.location.protocol === 'https:' || 
+                       window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1';
+      
+      if (!isSecure) {
+        console.warn('Warning: Microphone access on HTTP is restricted. Using HTTPS is recommended for production.');
+        // Still try to access microphone - some browsers allow it on same machine
+      }
+
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setError('Your browser does not support microphone access. Please use a modern browser.');
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
 
@@ -242,7 +258,19 @@ const VoiceChatPage = () => {
       recorder.start();
     } catch (err) {
       console.error('Recording start failed:', err);
-      setError('Failed to access microphone. Please check permissions.');
+      
+      // Provide specific error messages based on error type
+      if (err.name === 'NotAllowedError') {
+        setError('Microphone access denied. Please grant permission in your browser settings.');
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setError('No microphone found. Please connect a microphone and try again.');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setError('Microphone is in use by another application. Please close other apps using the microphone.');
+      } else if (err.name === 'SecurityError') {
+        setError('Microphone access is blocked. Please check your browser security settings.');
+      } else {
+        setError('Failed to access microphone. Please check permissions and try again.');
+      }
     }
   };
 
